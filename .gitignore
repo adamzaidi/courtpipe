@@ -39,6 +39,7 @@ data/extracted/*
 data/processed/*
 data/outputs/*
 data/model-eval/*
+data/idb/
 
 # Keep reference / static tables only
 !data/reference-tables/**
@@ -56,6 +57,8 @@ runs/
 *.csv
 # Small synthetic opinions committed for offline tests and the README fixture run.
 !tests/fixtures/*.csv
+# The 150-row IDB audit draw is public docket identifiers for hand review.
+!docs/idb/audit_sample.csv
 *.tsv
 *.xls
 *.xlsx
