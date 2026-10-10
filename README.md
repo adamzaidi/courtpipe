@@ -83,6 +83,8 @@ data/processed/review_queue.csv
 
 ### 1. Clone the repository and install dependencies
 
+Runtime dependencies are declared in `pyproject.toml`. `requirements.txt` only installs that package (`pip install -e .`). It is not a pip freeze.
+
 ```bash
 git clone <your_repo_url>
 cd <repo_name>
@@ -91,14 +93,23 @@ source .venv/bin/activate
 pip install -e .
 ```
 
-### 2. Set environment variables
-
-Create a `.env` file at the repository root (recommended):
+Tests use the `dev` extra:
 
 ```bash
-COURTLISTENER_API_KEY=YOUR_API_KEY
-COURTLISTENER_EMAIL=your@email.com
+pip install -e ".[dev]"
+python -m pytest
 ```
+
+### 2. Set environment variables
+
+A live extract needs a CourtListener token. Set it in the environment:
+
+```bash
+export COURTLISTENER_API_KEY=YOUR_API_KEY
+export COURTLISTENER_EMAIL=your@email.com
+```
+
+`python-dotenv` also reads a `.env` file in the repository root if you create one. Copy `.env.example` and keep the real values local. `.env` is gitignored. Do not commit API keys.
 
 ### 3. Run the full pipeline
 
@@ -112,6 +123,17 @@ courtpipe run --query "corporation" --max-cases 500
 courtpipe --help
 courtpipe run --help
 ```
+
+### 4. IDB settlement evaluation (no CourtListener key)
+
+This command scores whether a federal civil case against a corporate defendant, nature of suit 160, 410, or 850, filed in fiscal years 2010–2021, receives disposition code 13. It reads a local copy of the public FJC file. It does not download inside the evaluation command, and it does not use an API key.
+
+```bash
+python scripts/download_idb.py --out data/idb/cv88on.zip
+courtpipe evaluate-settlement --idb data/idb/cv88on.zip --report docs/idb/settlement_report.json
+```
+
+`data/idb/` is gitignored. The measured run, including pass or fail against the bars, is `docs/idb/RESULTS.md`. The hand audit is pending: the sample is `docs/idb/audit_sample.csv` and the rubric is `docs/idb/AUDIT_RUBRIC.md`. The securities class-action spec is not implemented.
 
 
 ## Pipeline Stages
@@ -223,10 +245,16 @@ logs/pipeline.log
 │   ├── outputs/         # Plots
 │   └── reference-tables/
 │
+├── tests/               # Offline pytest suite + synthetic opinion fixture
+├── scripts/             # fixture_results.py (offline example metrics)
+├── docs/examples/       # Charts and JSON from the fixture run
+├── .github/workflows/   # CI: install the package and run pytest
+│
 ├── runs/                # Per-run artifacts (params, logs, outputs)
 ├── logs/                # Console / pipeline logs
 │
 ├── pyproject.toml       # Packaging + dependencies
+├── requirements.txt     # Installs this package; not a pip freeze
 ├── README.md
 └── .gitignore
 ```
@@ -245,6 +273,63 @@ They document:
 - Raw extraction fields
 - Processed dataset columns
 - Outcome codes and meanings
+
+
+
+## Results
+
+### Fixture run (no API key)
+
+The tables and charts below were produced by labeling the 20 synthetic snippets in `tests/fixtures/sample_opinions.csv` and training the models in `analysis/model.py` on that table. They are not CourtListener corpus statistics.
+
+Regenerate them from a checkout (no API key, no network):
+
+```bash
+python scripts/fixture_results.py --out docs/examples/fixture-run
+```
+
+This recording used Python 3.12.3 with the packages resolved from `pyproject.toml` on that run: numpy 1.26.4, pandas 3.0.6, scikit-learn 1.9.1, matplotlib 3.8.4. The held-out split is 6 rows (`test_size=0.3`, `random_state=42`). Logistic regression logged a convergence warning: `lbfgs` stopped at `max_iter=1500`. Read these metrics as a smoke check that labeling, review flags, and evaluation artifacts run offline. They are not a measure of outcome-prediction quality.
+
+`scripts/fixture_results.py` printed:
+
+```text
+rows: 20
+fine labels: {"affirmed": 4, "dismissed": 4, "mixed": 2, "other": 3, "remanded": 2, "reversed": 3, "vacated": 2}
+coarse codes: {"0": 3, "1": 8, "2": 9}
+review: 7 needs_review / 13 auto_pass
+confidence min/p50/p90/max: 0.25 / 0.80 / 1.00 / 1.00
+coarse_baseline_most_frequent: acc=0.3333 f1_macro=0.1667 f1_weighted=0.1667 n_test=6
+coarse_logreg: acc=0.5000 f1_macro=0.5222 f1_weighted=0.4944 n_test=6
+coarse_random_forest: acc=0.8333 f1_macro=0.7778 f1_weighted=0.8333 n_test=6
+fine_baseline_most_frequent: acc=0.1667 f1_macro=0.0476 f1_weighted=0.0476 n_test=6
+fine_logreg: acc=0.0000 f1_macro=0.0000 f1_weighted=0.0000 n_test=6
+fine_random_forest: acc=0.6667 f1_macro=0.5556 f1_weighted=0.5556 n_test=6
+```
+
+Unrounded JSON is in `docs/examples/fixture-run/summary.json` and `docs/examples/fixture-run/evaluation_summary.json`. Coarse code 0 is other/unclear (3 rows), code 1 is affirmed or dismissed (8 rows), and code 2 is changed or mixed (9 rows). Seven of the 20 rows were flagged `needs_review`.
+
+Charts written by `vis/visualizations.py` for that same frame:
+
+![Coarse outcome distribution for the 20-row fixture](docs/examples/fixture-run/outcome_distribution.png)
+
+![Review queue counts for the 20-row fixture](docs/examples/fixture-run/review_queue_overview.png)
+
+![Coarse macro-F1 for the fixture holdout](docs/examples/fixture-run/model_comparison_f1_macro_coarse.png)
+
+### IDB code-13 settlement run
+
+Recorded in `docs/idb/RESULTS.md` from the public civil file. That page states the cohort size and whether the modeling bars passed. The hand audit on `docs/idb/audit_sample.csv` is still pending, so this README does not call the model a settlement predictor. Those figures are not the fixture scores above.
+
+### Live CourtListener run
+
+Not included. A live extract calls the CourtListener API and needs `COURTLISTENER_API_KEY`. Those outputs are gitignored and are not in this repository.
+
+Placeholder: this README does not report corpus-level counts, review rates, or model scores. After you run `courtpipe run`, copy figures from the files that run wrote:
+
+- `data/processed/processed_data.csv`
+- `data/processed/review_queue.csv`
+- `data/model-eval/evaluation_summary.json`
+- `data/outputs/*.png`
 
 
 

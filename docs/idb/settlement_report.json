@@ -1,0 +1,1123 @@
+{
+  "task": "idb_disp_13_filing_time",
+  "audit_gate": "pending",
+  "project_done": false,
+  "modeling_gate": {
+    "passed": false,
+    "bars": {
+      "roc_auc_beats_best_baseline": false,
+      "brier_beats_best_baseline": false,
+      "model_auc_ci_above_0.5": true
+    },
+    "reasons": [
+      "ROC-AUC does not clear the best filing-time rate baseline with a difference interval above zero.",
+      "Brier score does not improve on the best filing-time rate baseline with an interval above zero.",
+      "The AUC difference changes sign when a training fiscal year is dropped: 2013, 2015. That blocks a stability claim. It does not by itself fail the modeling gate."
+    ]
+  },
+  "file": {
+    "path": "/workspace/data/idb/cv88on.zip",
+    "table_path": "/workspace/data/idb/cv88on.txt",
+    "sha256": "74405231a9a3c246c7090d471a1525924fa5afb513ff22b4dc0f4babbac7223d",
+    "bytes": 329665474,
+    "as_of_source": "zip member"
+  },
+  "cohort": {
+    "nos_rows": 29038,
+    "unexpected_disp_rows": 0,
+    "unexpected_disp_codes": [],
+    "rows_scanned": 10960173,
+    "nos_outside_window_not_loaded": 90600,
+    "bad_filedate": 0,
+    "outside_fy2010_2021": 0,
+    "not_terminated": 816,
+    "pending_status_s": 816,
+    "origin_excluded": 1458,
+    "not_corporate": 15529,
+    "party_non_corporate": 15243,
+    "party_name_suffix": 10497,
+    "party_corporate_via_residence": 738,
+    "party_government": 286,
+    "not_a_merits_ending": 2246,
+    "unmapped_label": 0,
+    "duplicate_rows_dropped": 37,
+    "cohort_rows": 8952
+  },
+  "split": {
+    "as_of": "2026-08-26",
+    "train_before_rules": 4854,
+    "test_before_rules": 4098,
+    "train_duration_rows": 4854,
+    "train_negative_or_missing_duration": 0,
+    "train_duration_p95_days": 2573.699999999999,
+    "test_censored": 2491,
+    "mdl_rows": 746,
+    "mdl_test_rows_moved_to_train": 10,
+    "mdl_groups_spanning_split": 7,
+    "party_leakage_dropped": 401,
+    "party_leakage_dropped_settled": 82,
+    "test_blank_def_kept": 0,
+    "train_rows": 4864,
+    "test_rows": 1196
+  },
+  "label_counts_scored": {
+    "voluntary_dismissal": 1915,
+    "settled_out_of_court": 1259,
+    "other_dismissal": 1258,
+    "judgment_for_defendant": 751,
+    "judgment_for_plaintiff": 529,
+    "consent_judgment": 188,
+    "judgment_other": 160
+  },
+  "train_settlement_rate": 0.22594572368421054,
+  "test_settlement_rate": 0.13377926421404682,
+  "audit": {
+    "seed": 20261007,
+    "rows": 150,
+    "shortfalls": {
+      "disp_13": 0,
+      "disp_12": 0,
+      "disp_5": 0,
+      "judgment": 0,
+      "other_dismissal": 0
+    },
+    "status": "pending",
+    "path": "/workspace/docs/idb/audit_sample.csv"
+  },
+  "primary": {
+    "model_roc_auc": 0.7036739864864865,
+    "model_brier": 0.11084030895038599,
+    "baselines": {
+      "constant": {
+        "roc_auc": 0.5,
+        "brier": 0.12437702893166043
+      },
+      "nos_rate": {
+        "roc_auc": 0.6030194256756757,
+        "brier": 0.11567438462820809
+      },
+      "court_rate": {
+        "roc_auc": 0.6696669884169885,
+        "brier": 0.12077826317463253
+      },
+      "nos_court_rate": {
+        "roc_auc": 0.7138664333976835,
+        "brier": 0.1120375565299572
+      }
+    },
+    "best_baseline_auc": "nos_court_rate",
+    "best_baseline_brier": "nos_court_rate",
+    "bootstrap_vs_auc_baseline": {
+      "draws": 1000,
+      "draws_used": 1000,
+      "draws_skipped_one_class": 0,
+      "seed": 20261007,
+      "model_auc_ci95": [
+        0.6630210670916094,
+        0.7435224704147543
+      ],
+      "auc_difference_ci95": [
+        -0.047368498820290685,
+        0.02618002048262949
+      ],
+      "brier_improvement_ci95": [
+        -0.004074789726750783,
+        0.0061374313704518615
+      ]
+    },
+    "bootstrap_vs_brier_baseline": {
+      "brier_improvement_ci95": [
+        -0.004074789726750783,
+        0.0061374313704518615
+      ],
+      "draws_used": 1000
+    },
+    "auc_beats_baseline": false,
+    "brier_beats_baseline": false,
+    "model_auc_ci_above_half": true
+  },
+  "calibration": [
+    {
+      "bin": 0,
+      "lo": 0.0,
+      "hi": 0.1,
+      "n": 393,
+      "mean_predicted": 0.062439309592229396,
+      "observed_rate": 0.04834605597964377
+    },
+    {
+      "bin": 1,
+      "lo": 0.1,
+      "hi": 0.2,
+      "n": 531,
+      "mean_predicted": 0.13740935103189214,
+      "observed_rate": 0.1337099811676083
+    },
+    {
+      "bin": 2,
+      "lo": 0.2,
+      "hi": 0.3,
+      "n": 145,
+      "mean_predicted": 0.24524267630338428,
+      "observed_rate": 0.21379310344827587
+    },
+    {
+      "bin": 3,
+      "lo": 0.3,
+      "hi": 0.4,
+      "n": 67,
+      "mean_predicted": 0.3433470855759696,
+      "observed_rate": 0.2835820895522388
+    },
+    {
+      "bin": 4,
+      "lo": 0.4,
+      "hi": 0.5,
+      "n": 33,
+      "mean_predicted": 0.4457854072082411,
+      "observed_rate": 0.30303030303030304
+    },
+    {
+      "bin": 5,
+      "lo": 0.5,
+      "hi": 0.6,
+      "n": 13,
+      "mean_predicted": 0.5553318717579472,
+      "observed_rate": 0.23076923076923078
+    },
+    {
+      "bin": 6,
+      "lo": 0.6,
+      "hi": 0.7,
+      "n": 6,
+      "mean_predicted": 0.6546464326668998,
+      "observed_rate": 0.5
+    },
+    {
+      "bin": 7,
+      "lo": 0.7,
+      "hi": 0.8,
+      "n": 6,
+      "mean_predicted": 0.7475725993811139,
+      "observed_rate": 0.5
+    },
+    {
+      "bin": 8,
+      "lo": 0.8,
+      "hi": 0.9,
+      "n": 2,
+      "mean_predicted": 0.8103371795091062,
+      "observed_rate": 0.5
+    },
+    {
+      "bin": 9,
+      "lo": 0.9,
+      "hi": 1.0,
+      "n": 0,
+      "mean_predicted": null,
+      "observed_rate": null
+    }
+  ],
+  "slices": [
+    {
+      "slice": "NOS 160",
+      "n": 152,
+      "positives": 39,
+      "model_auc": 0.5824824143408214,
+      "best_baseline_auc": 0.5635352847742229,
+      "best_baseline": "nos_court_rate",
+      "auc_difference_ci95": null,
+      "comparison": "auc only"
+    },
+    {
+      "slice": "NOS 410",
+      "n": 137,
+      "positives": 29,
+      "model_auc": 0.6848659003831419,
+      "best_baseline_auc": 0.5718390804597702,
+      "best_baseline": "nos_court_rate",
+      "auc_difference_ci95": null,
+      "comparison": "auc only"
+    },
+    {
+      "slice": "NOS 850",
+      "n": 907,
+      "positives": 92,
+      "model_auc": 0.6950920245398773,
+      "best_baseline_auc": 0.7421045612163243,
+      "best_baseline": "nos_court_rate",
+      "auc_difference_ci95": [
+        -0.1018449860534105,
+        0.008778226363753323
+      ],
+      "comparison": "model versus baseline"
+    },
+    {
+      "slice": "DISTRICT 01",
+      "n": 40,
+      "positives": 3,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 03",
+      "n": 2,
+      "positives": 0,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 04",
+      "n": 2,
+      "positives": 0,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 05",
+      "n": 8,
+      "positives": 0,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 06",
+      "n": 3,
+      "positives": 0,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 07",
+      "n": 61,
+      "positives": 5,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 08",
+      "n": 186,
+      "positives": 8,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 09",
+      "n": 4,
+      "positives": 0,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 11",
+      "n": 196,
+      "positives": 6,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 12",
+      "n": 62,
+      "positives": 14,
+      "model_auc": 0.5483630952380952,
+      "best_baseline_auc": 0.6153273809523809,
+      "best_baseline": "nos_rate",
+      "auc_difference_ci95": null,
+      "comparison": "auc only"
+    },
+    {
+      "slice": "DISTRICT 13",
+      "n": 19,
+      "positives": 7,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 14",
+      "n": 2,
+      "positives": 0,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 15",
+      "n": 4,
+      "positives": 1,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 16",
+      "n": 38,
+      "positives": 17,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 17",
+      "n": 2,
+      "positives": 0,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 18",
+      "n": 1,
+      "positives": 0,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 19",
+      "n": 10,
+      "positives": 4,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 20",
+      "n": 3,
+      "positives": 2,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 22",
+      "n": 13,
+      "positives": 4,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 26",
+      "n": 4,
+      "positives": 0,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 28",
+      "n": 3,
+      "positives": 1,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 29",
+      "n": 3,
+      "positives": 1,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 36",
+      "n": 4,
+      "positives": 2,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 39",
+      "n": 22,
+      "positives": 7,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 3A",
+      "n": 11,
+      "positives": 0,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 3C",
+      "n": 27,
+      "positives": 7,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 3E",
+      "n": 14,
+      "positives": 3,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 3G",
+      "n": 1,
+      "positives": 0,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 3J",
+      "n": 1,
+      "positives": 0,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 40",
+      "n": 4,
+      "positives": 0,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 41",
+      "n": 26,
+      "positives": 7,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 42",
+      "n": 6,
+      "positives": 1,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 44",
+      "n": 4,
+      "positives": 0,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 45",
+      "n": 12,
+      "positives": 2,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 46",
+      "n": 2,
+      "positives": 1,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 47",
+      "n": 6,
+      "positives": 2,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 48",
+      "n": 7,
+      "positives": 1,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 49",
+      "n": 1,
+      "positives": 0,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 50",
+      "n": 3,
+      "positives": 0,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 51",
+      "n": 1,
+      "positives": 1,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 52",
+      "n": 50,
+      "positives": 12,
+      "model_auc": 0.7719298245614035,
+      "best_baseline_auc": 0.5,
+      "best_baseline": "court_rate",
+      "auc_difference_ci95": null,
+      "comparison": "auc only"
+    },
+    {
+      "slice": "DISTRICT 56",
+      "n": 7,
+      "positives": 0,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 57",
+      "n": 4,
+      "positives": 3,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 62",
+      "n": 6,
+      "positives": 0,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 63",
+      "n": 1,
+      "positives": 0,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 64",
+      "n": 6,
+      "positives": 2,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 66",
+      "n": 2,
+      "positives": 0,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 67",
+      "n": 4,
+      "positives": 0,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 70",
+      "n": 1,
+      "positives": 0,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 71",
+      "n": 137,
+      "positives": 7,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 72",
+      "n": 1,
+      "positives": 1,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 73",
+      "n": 53,
+      "positives": 7,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 74",
+      "n": 18,
+      "positives": 1,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 75",
+      "n": 3,
+      "positives": 1,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 76",
+      "n": 1,
+      "positives": 1,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 78",
+      "n": 19,
+      "positives": 4,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 79",
+      "n": 2,
+      "positives": 0,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 80",
+      "n": 4,
+      "positives": 3,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 81",
+      "n": 13,
+      "positives": 4,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 82",
+      "n": 29,
+      "positives": 5,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 83",
+      "n": 2,
+      "positives": 1,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 87",
+      "n": 1,
+      "positives": 0,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 88",
+      "n": 3,
+      "positives": 0,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 89",
+      "n": 1,
+      "positives": 0,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "DISTRICT 90",
+      "n": 10,
+      "positives": 1,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "JURIS 1",
+      "n": 50,
+      "positives": 1,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "JURIS 3",
+      "n": 1041,
+      "positives": 127,
+      "model_auc": 0.6893985078998605,
+      "best_baseline_auc": 0.7140069608366788,
+      "best_baseline": "nos_court_rate",
+      "auc_difference_ci95": [
+        -0.07169241215254958,
+        0.020071414560984355
+      ],
+      "comparison": "model versus baseline"
+    },
+    {
+      "slice": "JURIS 4",
+      "n": 105,
+      "positives": 32,
+      "model_auc": 0.6023116438356164,
+      "best_baseline_auc": 0.595890410958904,
+      "best_baseline": "nos_court_rate",
+      "auc_difference_ci95": null,
+      "comparison": "auc only"
+    },
+    {
+      "slice": "corporate name_suffix",
+      "n": 1137,
+      "positives": 142,
+      "model_auc": 0.7060513836789581,
+      "best_baseline_auc": 0.7123327907141341,
+      "best_baseline": "nos_court_rate",
+      "auc_difference_ci95": [
+        -0.04848837096535983,
+        0.03268593936098783
+      ],
+      "comparison": "model versus baseline"
+    },
+    {
+      "slice": "corporate corporate_via_residence",
+      "n": 59,
+      "positives": 18,
+      "model_auc": 0.5108401084010841,
+      "best_baseline_auc": 0.605691056910569,
+      "best_baseline": "nos_court_rate",
+      "auc_difference_ci95": null,
+      "comparison": "auc only"
+    },
+    {
+      "slice": "ORIGIN original",
+      "n": 1097,
+      "positives": 136,
+      "model_auc": 0.6806329191406011,
+      "best_baseline_auc": 0.7286183203770581,
+      "best_baseline": "nos_court_rate",
+      "auc_difference_ci95": [
+        -0.08570100561205157,
+        -0.009247180743075862
+      ],
+      "comparison": "model versus baseline"
+    },
+    {
+      "slice": "ORIGIN removed",
+      "n": 24,
+      "positives": 7,
+      "model_auc": null,
+      "best_baseline_auc": null,
+      "best_baseline": null,
+      "auc_difference_ci95": null,
+      "comparison": "not reported"
+    },
+    {
+      "slice": "ORIGIN other allowed",
+      "n": 75,
+      "positives": 17,
+      "model_auc": 0.7880324543610547,
+      "best_baseline_auc": 0.6876267748478702,
+      "best_baseline": "court_rate",
+      "auc_difference_ci95": null,
+      "comparison": "auc only"
+    }
+  ],
+  "stability_drop_one_fiscal_year": [
+    {
+      "dropped_fiscal_year": 2010,
+      "train_rows": 4293,
+      "auc_difference": -0.01641831563706564,
+      "sign_change": false,
+      "best_baseline": "nos_court_rate"
+    },
+    {
+      "dropped_fiscal_year": 2011,
+      "train_rows": 4323,
+      "auc_difference": -0.022405888030887944,
+      "sign_change": false,
+      "best_baseline": "nos_court_rate"
+    },
+    {
+      "dropped_fiscal_year": 2012,
+      "train_rows": 4176,
+      "auc_difference": -0.009899855212355368,
+      "sign_change": false,
+      "best_baseline": "nos_court_rate"
+    },
+    {
+      "dropped_fiscal_year": 2013,
+      "train_rows": 4275,
+      "auc_difference": 0.007375120656370804,
+      "sign_change": true,
+      "best_baseline": "nos_court_rate"
+    },
+    {
+      "dropped_fiscal_year": 2014,
+      "train_rows": 4364,
+      "auc_difference": -0.03161196911196895,
+      "sign_change": false,
+      "best_baseline": "nos_court_rate"
+    },
+    {
+      "dropped_fiscal_year": 2015,
+      "train_rows": 4305,
+      "auc_difference": 0.013984073359073146,
+      "sign_change": true,
+      "best_baseline": "nos_court_rate"
+    },
+    {
+      "dropped_fiscal_year": 2016,
+      "train_rows": 4308,
+      "auc_difference": -0.029790057915057955,
+      "sign_change": false,
+      "best_baseline": "nos_court_rate"
+    },
+    {
+      "dropped_fiscal_year": 2017,
+      "train_rows": 4014,
+      "auc_difference": -0.009417229729729915,
+      "sign_change": false,
+      "best_baseline": "nos_court_rate"
+    }
+  ],
+  "party_leakage_secondary": {
+    "n": 401,
+    "roc_auc": 0.659798149705635,
+    "note": "Secondary. Not the success score."
+  },
+  "y_broad_sensitivity": {
+    "model_roc_auc": 0.6398469293764968,
+    "model_brier": 0.20635983150383413,
+    "baselines": {
+      "constant": {
+        "roc_auc": 0.5,
+        "brier": 0.24289945378830688
+      },
+      "nos_rate": {
+        "roc_auc": 0.4661586642327209,
+        "brier": 0.24894281848464167
+      },
+      "court_rate": {
+        "roc_auc": 0.6275627606303696,
+        "brier": 0.23208419444515824
+      },
+      "nos_court_rate": {
+        "roc_auc": 0.6299392071812563,
+        "brier": 0.2157853960131165
+      }
+    },
+    "best_baseline_auc": "nos_court_rate",
+    "best_baseline_brier": "nos_court_rate",
+    "bootstrap_vs_auc_baseline": {
+      "draws": 1000,
+      "draws_used": 1000,
+      "draws_skipped_one_class": 0,
+      "seed": 20261007,
+      "model_auc_ci95": [
+        0.6055506648733602,
+        0.6723919814177464
+      ],
+      "auc_difference_ci95": [
+        -0.018713214332077652,
+        0.0399110845068156
+      ],
+      "brier_improvement_ci95": [
+        0.002013077548155167,
+        0.01706364246436628
+      ]
+    },
+    "bootstrap_vs_brier_baseline": {
+      "brier_improvement_ci95": [
+        0.002013077548155167,
+        0.01706364246436628
+      ],
+      "draws_used": 1000
+    },
+    "auc_beats_baseline": false,
+    "brier_beats_baseline": true,
+    "model_auc_ci_above_half": true
+  },
+  "macro_f1": {
+    "model_macro_f1": 0.3002836745702385,
+    "baseline_macro_f1": 0.19144482535484966,
+    "binding": false,
+    "error": null
+  },
+  "notes": [
+    "file_year is (calendar year - 2015) / 5, one numeric trend, so later test years are not unseen dummy columns.",
+    "demanded_bin is a coarse bin plus demanded_missing. The raw dollar figure is not a feature.",
+    "Positive class is DISP 13 only. DISP 12 and DISP 5 stay in the cohort with y_settle 0.",
+    "y_broad and macro-F1 are reported and are not the headline gate.",
+    "The hand audit has not been done. Do not describe this model as a settled case until that gate passes and the modeling gate passes."
+  ]
+}

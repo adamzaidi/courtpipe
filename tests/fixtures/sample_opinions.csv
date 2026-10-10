@@ -1,0 +1,21 @@
+opinion_id,case_id,case_name,court,jurisdiction_state,citation,opinion_year,plain_text_url,plain_text_present,text_snippet
+1,1001,Example Corp. v. Sample Holdings 1,U.S. Court of Appeals for the Ninth Circuit,Federal,101 F.3d 201,2012,,0,The record in this corporate dispute is extensive. In this opinion the judgment is affirmed.
+2,1002,Example Corp. v. Sample Holdings 2,U.S. Court of Appeals for the Fifth Circuit,Federal,102 F.3d 202,2013,,0,The record in this corporate dispute is extensive. In this opinion the judgment is affirmed.
+3,1003,Example Corp. v. Sample Holdings 3,U.S. District Court for the Southern District of New York,Federal,103 F. Supp. 3d 203,2014,,0,The record in this corporate dispute is extensive. In this opinion the judgment is affirmed.
+4,1004,Example Corp. v. Sample Holdings 4,Supreme Court of California,California,104 Cal. App. 5th 204,2015,,0,The record in this corporate dispute is extensive. In this opinion the judgment is affirmed.
+5,1005,Example Corp. v. Sample Holdings 5,U.S. Court of Appeals for the Ninth Circuit,Federal,105 F.3d 205,2016,,0,For the reasons stated in this opinion the appeal is dismissed.
+6,1006,Example Corp. v. Sample Holdings 6,U.S. Court of Appeals for the Fifth Circuit,Federal,106 F.3d 206,2017,,0,For the reasons stated in this opinion the appeal is dismissed.
+7,1007,Example Corp. v. Sample Holdings 7,U.S. District Court for the Southern District of New York,Federal,107 F. Supp. 3d 207,2018,,0,In this opinion the judgment is reversed.
+8,1008,Example Corp. v. Sample Holdings 8,Supreme Court of California,California,108 Cal. App. 5th 208,2019,,0,In this opinion the judgment is reversed.
+9,1009,Example Corp. v. Sample Holdings 9,U.S. Court of Appeals for the Ninth Circuit,Federal,109 F.3d 209,2020,,0,In this opinion the judgment is reversed.
+10,1010,Example Corp. v. Sample Holdings 10,U.S. Court of Appeals for the Fifth Circuit,Federal,110 F.3d 210,2021,,0,In this opinion we vacate the judgment below.
+11,1011,Example Corp. v. Sample Holdings 11,U.S. District Court for the Southern District of New York,Federal,111 F. Supp. 3d 211,2022,,0,In this opinion we vacate the judgment below.
+12,1012,Example Corp. v. Sample Holdings 12,Supreme Court of California,California,112 Cal. App. 5th 212,2023,,0,In this opinion we remand for further proceedings.
+13,1013,Example Corp. v. Sample Holdings 13,U.S. Court of Appeals for the Ninth Circuit,Federal,113 F.3d 213,2012,,0,In this opinion we remand for further proceedings.
+14,1014,Example Corp. v. Sample Holdings 14,U.S. Court of Appeals for the Fifth Circuit,Federal,114 F.3d 214,2013,,0,The opinion is affirmed in part and reversed in part.
+15,1015,Example Corp. v. Sample Holdings 15,U.S. District Court for the Southern District of New York,Federal,115 F. Supp. 3d 215,2014,,0,The opinion is affirmed in part and reversed in part.
+16,1016,Example Corp. v. Sample Holdings 16,Supreme Court of California,California,116 Cal. App. 5th 216,2015,,0,The parties argued about corporate veil piercing and damages only.
+17,1017,Example Corp. v. Sample Holdings 17,U.S. Court of Appeals for the Ninth Circuit,Federal,117 F.3d 217,2016,,0,The parties argued about corporate veil piercing and damages only.
+18,1018,Example Corp. v. Sample Holdings 18,U.S. Court of Appeals for the Fifth Circuit,Federal,118 F.3d 218,2017,,0,The parties argued about corporate veil piercing and damages only.
+19,1019,Example Corp. v. Sample Holdings 19,U.S. District Court for the Southern District of New York,Federal,119 F. Supp. 3d 219,2018,,0,dismissed filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler 
+20,1020,Example Corp. v. Sample Holdings 20,Supreme Court of California,California,120 Cal. App. 5th 220,2019,,0,dismissed filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler 
