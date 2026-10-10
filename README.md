@@ -136,6 +136,11 @@ courtpipe evaluate-settlement --idb data/idb/cv88on.zip --report docs/idb/settle
 `data/idb/` is gitignored. The measured run, including pass or fail against the bars, is `docs/idb/RESULTS.md`. The hand audit is pending: the sample is `docs/idb/audit_sample.csv` and the rubric is `docs/idb/AUDIT_RUBRIC.md`. The securities class-action spec is not implemented.
 
 
+
+### 5. Appeal-reversal track (track 4, spec only)
+
+This track asks whether a federal court of appeals affirms or changes (reverses, vacates, or remands) a district court ruling, using only information available before the appellate decision. It is a proposal. No code, data extract, or model exists for it, and the build waits for approval. The spec, success bars, and decisions needed are in [`docs/appeal-reversal-spec.md`](docs/appeal-reversal-spec.md).
+
 ## Pipeline Stages
 
 ### 1. Extract
