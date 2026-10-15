@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from analysis.cl_client import CourtListenerClient
+from analysis.mtd.corporate import party_type_label
 from analysis.mtd.features import nature_of_suit
 
 logger = logging.getLogger("courtpipe.mtd.fetch")
@@ -24,7 +25,15 @@ SMOKE_DOCKET_ID = 70649963  # public search hit cited in the spec; no document b
 
 
 def _party_row(raw: dict[str, Any]) -> dict[str, Any]:
-    types = raw.get("party_types") or raw.get("type") or raw.get("party_type")
+    raw_types = raw.get("party_types")
+    if raw_types is None:
+        raw_types = raw.get("type") if "type" in raw else raw.get("party_type")
+    if isinstance(raw_types, list):
+        types = [party_type_label(item) for item in raw_types]
+    elif raw_types is None:
+        types = None
+    else:
+        types = [party_type_label(raw_types)]
     attorneys = []
     for item in raw.get("attorneys") or []:
         if isinstance(item, dict):

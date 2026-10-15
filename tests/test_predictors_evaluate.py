@@ -47,6 +47,13 @@ def test_mtd_cli_and_missing_token_fetch(tmp_path, monkeypatch):
     monkeypatch.delenv("COURTLISTENER_API_KEY", raising=False)
     code = main(["fetch-mtd", "--out", str(tmp_path / "out.jsonl"), "--max-dockets", "2"])
     assert code == 2
+
+
+def test_mtd_cli_rejects_unusable_token_blob(tmp_path, monkeypatch):
+    monkeypatch.setenv("COURTLISTENER_API_TOKEN", "copied ui text @ name ~ other @ name")
+    monkeypatch.delenv("COURTLISTENER_API_KEY", raising=False)
+    code = main(["fetch-mtd", "--out", str(tmp_path / "out.jsonl"), "--max-dockets", "2"])
+    assert code == 2
     extract = write_mtd(tmp_path / "mtd.jsonl")
     code = main(
         [
@@ -62,6 +69,9 @@ def test_mtd_cli_and_missing_token_fetch(tmp_path, monkeypatch):
         ]
     )
     assert code == 0
+    report_text = (tmp_path / "r.json").read_text()
+    assert "copied ui text" not in report_text
+    assert "@ name" not in report_text
 
 
 def test_appeal_evaluate_fixture(tmp_path):

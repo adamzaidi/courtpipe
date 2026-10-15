@@ -74,8 +74,14 @@ def fetch_appeal_extract(
                     "decretal_excerpt": snippet[-1500:],
                     "case_name": cluster.get("case_name") or hit.get("caseName") or "",
                     "nature_of_suit": docket.get("nature_of_suit") or hit.get("suitNature") or "",
-                    "appeal_from_id": str(docket.get("appeal_from_id") or "").lower() or "cand",
-                    "appeal_from_jurisdiction": "FD",
+                    "appeal_from_id": str(
+                        docket.get("appeal_from_id") or hit.get("appealFromId") or ""
+                    ).lower(),
+                    "appeal_from_jurisdiction": str(
+                        docket.get("appeal_from_jurisdiction")
+                        or hit.get("appealFromJurisdiction")
+                        or "FD"
+                    ),
                     "assigned_to_id": originating.get("assigned_to_id") if isinstance(originating, dict) else None,
                     "originating_date_judgment": None,
                     "district_opinion_plain_text": "",

@@ -98,6 +98,19 @@ def test_corporate_and_government_names():
     assert movant is not None
 
 
+def test_nested_party_types_from_courtlistener_payload():
+    nested = {
+        "name": "Equifax, Inc.",
+        "party_types": [{"name": "Defendant", "date_terminated": None}],
+    }
+    assert is_defendant_role(nested) is True
+    plaintiff = {
+        "name": "CT Healthcare Holdings, LLC",
+        "party_types": [{"name": "Plaintiff"}],
+    }
+    assert is_defendant_role(plaintiff) is False
+
+
 def test_blank_party_type_is_a_stop():
     from analysis.mtd.corporate import MissingPartyTypeError
 

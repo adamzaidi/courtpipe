@@ -12,7 +12,7 @@ from urllib.parse import urlencode
 
 import requests
 
-from analysis.cl_auth import auth_headers, courtlistener_token
+from analysis.cl_auth import auth_headers, courtlistener_token, token_env_set_but_unusable
 
 logger = logging.getLogger("courtpipe.cl_client")
 
@@ -84,10 +84,17 @@ class CourtListenerClient:
         self.session.headers.update(auth_headers())
         self._token_present = courtlistener_token() is not None
         if require_token and not self._token_present:
+            extra = (
+                " A token environment variable is set but is not a usable CourtListener "
+                "credential (not token-shaped, or not latin-1). The value is not printed."
+                if token_env_set_but_unusable()
+                else ""
+            )
             raise RuntimeError(
-                "Set COURTLISTENER_API_TOKEN or COURTLISTENER_API_KEY in the environment. "
-                "This command does not run without a token. Evaluate against "
-                "tests/fixtures instead, or export a token locally."
+                "Set COURTLISTENER_API_TOKEN or COURTLISTENER_API_KEY in the environment."
+                + extra
+                + " This command does not run without a usable token. Evaluate against "
+                "tests/fixtures instead, or export a token from your CourtListener profile."
             )
 
     def get_json(self, url: str, params: Optional[dict] = None, use_cache: bool = True) -> dict[str, Any]:

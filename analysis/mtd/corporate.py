@@ -86,6 +86,13 @@ def classify_name(name: object) -> str:
     return "other"
 
 
+def party_type_label(item: Any) -> str:
+    """CourtListener party_types is often a list of {name: Defendant} objects."""
+    if isinstance(item, dict):
+        return str(item.get("name") or item.get("party_type") or item.get("type") or "")
+    return "" if item is None else str(item)
+
+
 def _party_types(party: dict[str, Any]) -> list[str]:
     for key in ("party_types", "party_type", "type"):
         if key not in party:
@@ -94,8 +101,8 @@ def _party_types(party: dict[str, Any]) -> list[str]:
         if raw is None:
             return []
         if isinstance(raw, list):
-            return [str(item) for item in raw]
-        return [str(raw)]
+            return [party_type_label(item) for item in raw]
+        return [party_type_label(raw)]
     raise MissingPartyTypeError("parties payload has no party-type field")
 
 
