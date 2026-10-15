@@ -56,6 +56,57 @@ def _build_parser() -> argparse.ArgumentParser:
     sp_ev.add_argument("--as-of", default="", help="Extract as-of date YYYY-MM-DD; default is the zip timestamp")
     sp_ev.add_argument("--bootstrap", type=int, default=1000)
 
+    sp_mtd_fetch = sub.add_parser(
+        "fetch-mtd",
+        help="Modest cached CourtListener pull of 12(b)(6) candidate dockets (needs a token)",
+    )
+    sp_mtd_fetch.add_argument("--out", default="data/extracted/mtd_extract.jsonl")
+    sp_mtd_fetch.add_argument("--cache", default="data/cache/courtlistener")
+    sp_mtd_fetch.add_argument("--max-dockets", type=int, default=20)
+
+    sp_mtd = sub.add_parser(
+        "evaluate-mtd",
+        help="Score the motion-to-dismiss model on a local extract (no network)",
+    )
+    sp_mtd.add_argument("--extract", required=True, help="Local JSONL/JSON extract of dockets")
+    sp_mtd.add_argument("--report", default="data/model-eval/mtd_report.json")
+    sp_mtd.add_argument("--audit-out", default="docs/mtd/audit_sample.csv")
+    sp_mtd.add_argument("--results-md", default="")
+    sp_mtd.add_argument("--bootstrap", type=int, default=1000)
+
+    sp_mtd_smoke = sub.add_parser(
+        "smoke-mtd",
+        help="One authenticated docket-entry read (needs a token; does not train)",
+    )
+    sp_mtd_smoke.add_argument("--cache", default="data/cache/courtlistener")
+    sp_mtd_smoke.add_argument("--docket-id", type=int, default=0)
+
+    sp_ap_fetch = sub.add_parser(
+        "fetch-appeal",
+        help="Modest cached CourtListener pull of appellate clusters (needs a token)",
+    )
+    sp_ap_fetch.add_argument("--out", default="data/extracted/appeal_extract.jsonl")
+    sp_ap_fetch.add_argument("--cache", default="data/cache/courtlistener")
+    sp_ap_fetch.add_argument("--max-clusters", type=int, default=20)
+
+    sp_ap = sub.add_parser(
+        "evaluate-appeal",
+        help="Score the appeal-reversal model on a local extract (no network)",
+    )
+    sp_ap.add_argument("--extract", required=True, help="Local JSONL/JSON extract of clusters")
+    sp_ap.add_argument("--report", default="data/model-eval/appeal_report.json")
+    sp_ap.add_argument("--audit-out", default="docs/appeal/audit_sample.csv")
+    sp_ap.add_argument("--results-md", default="")
+    sp_ap.add_argument("--bootstrap", type=int, default=1000)
+    sp_ap.add_argument("--snapshot-year", type=int, default=0)
+
+    sp_ap_smoke = sub.add_parser(
+        "smoke-appeal",
+        help="One authenticated cluster read (needs a token; does not train)",
+    )
+    sp_ap_smoke.add_argument("--cache", default="data/cache/courtlistener")
+    sp_ap_smoke.add_argument("--cluster-id", type=int, default=0)
+
     return p
 
 
@@ -157,6 +208,108 @@ def main(argv: list[str] | None = None) -> int:
             logger.info("Wrote %s", args.results_md)
         gate = "pass" if report["modeling_gate"]["passed"] else "fail"
         logger.info("audit_gate=%s modeling_gate=%s", report["audit_gate"], gate)
+        return 0
+
+    if args.cmd == "fetch-mtd":
+        from analysis.mtd.fetch import fetch_mtd_extract
+
+        try:
+            path = fetch_mtd_extract(
+                Path(args.out),
+                Path(args.cache),
+                max_dockets=int(args.max_dockets),
+                log=logger.info,
+            )
+        except RuntimeError as exc:
+            logger.error("%s", exc)
+            return 2
+        logger.info("Wrote %s", path)
+        return 0
+
+    if args.cmd == "evaluate-mtd":
+        from analysis.mtd.evaluate import render_results, run_evaluation
+
+        try:
+            report = run_evaluation(
+                Path(args.extract),
+                Path(args.report),
+                audit_path=Path(args.audit_out) if args.audit_out else None,
+                bootstrap_draws=int(args.bootstrap),
+                results_md=Path(args.results_md) if args.results_md else None,
+                log=logger.info,
+            )
+        except (FileNotFoundError, ValueError, AssertionError) as exc:
+            logger.error("%s", exc)
+            return 2
+        if args.results_md:
+            Path(args.results_md).write_text(render_results(report))
+            logger.info("Wrote %s", args.results_md)
+        gate = "pass" if report["modeling_gate"]["passed"] else "fail"
+        logger.info("audit_gate=%s modeling_gate=%s", report["audit_gate"], gate)
+        return 0
+
+    if args.cmd == "smoke-mtd":
+        from analysis.mtd.fetch import SMOKE_DOCKET_ID, smoke_docket_entries
+
+        docket_id = int(args.docket_id) or SMOKE_DOCKET_ID
+        try:
+            info = smoke_docket_entries(Path(args.cache), docket_id=docket_id)
+        except RuntimeError as exc:
+            logger.error("%s", exc)
+            return 2
+        logger.info("mtd smoke ok docket_id=%s entries=%s", info["docket_id"], info["n_entries_page"])
+        return 0
+
+    if args.cmd == "fetch-appeal":
+        from analysis.appeal.fetch import fetch_appeal_extract
+
+        try:
+            path = fetch_appeal_extract(
+                Path(args.out),
+                Path(args.cache),
+                max_clusters=int(args.max_clusters),
+                log=logger.info,
+            )
+        except RuntimeError as exc:
+            logger.error("%s", exc)
+            return 2
+        logger.info("Wrote %s", path)
+        return 0
+
+    if args.cmd == "evaluate-appeal":
+        from analysis.appeal.evaluate import render_results, run_evaluation
+
+        year = int(args.snapshot_year) or None
+        try:
+            report = run_evaluation(
+                Path(args.extract),
+                Path(args.report),
+                audit_path=Path(args.audit_out) if args.audit_out else None,
+                bootstrap_draws=int(args.bootstrap),
+                snapshot_year=year,
+                results_md=Path(args.results_md) if args.results_md else None,
+                log=logger.info,
+            )
+        except (FileNotFoundError, ValueError, AssertionError) as exc:
+            logger.error("%s", exc)
+            return 2
+        if args.results_md:
+            Path(args.results_md).write_text(render_results(report))
+            logger.info("Wrote %s", args.results_md)
+        gate = "pass" if report["modeling_gate"]["passed"] else "fail"
+        logger.info("audit_gate=%s modeling_gate=%s", report["audit_gate"], gate)
+        return 0
+
+    if args.cmd == "smoke-appeal":
+        from analysis.appeal.fetch import SMOKE_CLUSTER_ID, smoke_cluster
+
+        cluster_id = int(args.cluster_id) or SMOKE_CLUSTER_ID
+        try:
+            info = smoke_cluster(Path(args.cache), cluster_id=cluster_id)
+        except RuntimeError as exc:
+            logger.error("%s", exc)
+            return 2
+        logger.info("appeal smoke ok cluster_id=%s", info["cluster_id"])
         return 0
 
     # Ensure runs/<run_id>/logs/run.log exists for real commands

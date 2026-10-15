@@ -33,6 +33,8 @@ packages = [
   "courtpipe",
   "etl",
   "analysis",
+  "analysis.mtd",
+  "analysis.appeal",
   "vis",
   "utils",
 ]

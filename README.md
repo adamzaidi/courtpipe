@@ -105,7 +105,7 @@ python -m pytest
 A live extract needs a CourtListener token. Set it in the environment:
 
 ```bash
-export COURTLISTENER_API_KEY=YOUR_API_KEY
+export COURTLISTENER_API_TOKEN=YOUR_API_TOKEN   # preferred; COURTLISTENER_API_KEY also works
 export COURTLISTENER_EMAIL=your@email.com
 ```
 
@@ -134,6 +134,63 @@ courtpipe evaluate-settlement --idb data/idb/cv88on.zip --report docs/idb/settle
 ```
 
 `data/idb/` is gitignored. The measured run, including pass or fail against the bars, is `docs/idb/RESULTS.md`. The hand audit is pending: the sample is `docs/idb/audit_sample.csv` and the rubric is `docs/idb/AUDIT_RUBRIC.md`. The securities class-action spec is not implemented.
+
+### 5. Motion-to-dismiss outcome predictor (offline fixture, then a local live pull)
+
+Predicts whether a corporate defendant's Rule 12(b)(6) motion was granted, granted in part, or denied. Features are pre-order only. The spec is `docs/mtd/SPEC.md` and the evaluation protocol is `docs/mtd/EVALUATION.md`.
+
+The token is read from `COURTLISTENER_API_TOKEN` if set, else `COURTLISTENER_API_KEY`. It is never printed, logged, or written into a report. This environment usually has no token. CI and the default path therefore score a small synthetic extract.
+
+```bash
+python tests/fixtures/mtd/build_extract.py
+courtpipe evaluate-mtd \
+  --extract tests/fixtures/mtd/extract.jsonl \
+  --report data/model-eval/mtd_report.json \
+  --results-md docs/mtd/RESULTS.md \
+  --bootstrap 200
+```
+
+Live pull, run locally by the owner after exporting a token (modest, cached, rate-limited):
+
+```bash
+export COURTLISTENER_API_TOKEN=...   # or COURTLISTENER_API_KEY
+export COURTLISTENER_EMAIL=you@example.com
+courtpipe fetch-mtd --max-dockets 20 --cache data/cache/courtlistener --out data/extracted/mtd_extract.jsonl
+courtpipe evaluate-mtd --extract data/extracted/mtd_extract.jsonl --report data/model-eval/mtd_report.json
+courtpipe smoke-mtd
+```
+
+`data/cache/` and `data/extracted/` are gitignored. Fixture scores are not a grant rate. The two-reader 120-row audit is pending.
+
+### 6. Appeal-reversal predictor (offline fixture, then bulk or a local live pull)
+
+Predicts `y_disturb`: whether a federal court of appeals reversed, vacated, remanded, or mixed a district judgment, versus a pure affirmance. Features are dated on or before the argument date (else the appeal filing date). The spec is `docs/appeal-reversal-spec.md`.
+
+The corpus path in that spec is one CourtListener bulk snapshot on the operator's machine, not paging the REST API (authenticated defaults are 5 requests/minute, 50/hour, 125/day). Evaluation itself downloads nothing.
+
+```bash
+python tests/fixtures/appeal/build_extract.py
+courtpipe evaluate-appeal \
+  --extract tests/fixtures/appeal/extract.jsonl \
+  --snapshot-year 2025 \
+  --report data/model-eval/appeal_report.json \
+  --results-md docs/appeal/RESULTS.md \
+  --bootstrap 200
+```
+
+Live commands the owner runs locally:
+
+```bash
+# Preferred v1 corpus: download a quarterly bulk snapshot into a gitignored folder, then
+# convert / score it. Do not page thirteen circuits through the REST API.
+# Modest optional REST pull (cached, rate-limited, needs a token):
+export COURTLISTENER_API_TOKEN=...
+courtpipe fetch-appeal --max-clusters 20 --cache data/cache/courtlistener --out data/extracted/appeal_extract.jsonl
+courtpipe evaluate-appeal --extract data/extracted/appeal_extract.jsonl --report data/model-eval/appeal_report.json
+courtpipe smoke-appeal
+```
+
+Judge-level outputs are aggregate only (one AUC/Brier for the judge-rate baseline). Per-judge ranks are not written.
 
 
 ## Pipeline Stages
@@ -245,7 +302,7 @@ logs/pipeline.log
 │   ├── outputs/         # Plots
 │   └── reference-tables/
 │
-├── tests/               # Offline pytest suite + synthetic opinion fixture
+├── tests/               # Offline pytest suite + synthetic opinion / MTD / appeal fixtures
 ├── scripts/             # fixture_results.py (offline example metrics)
 ├── docs/examples/       # Charts and JSON from the fixture run
 ├── .github/workflows/   # CI: install the package and run pytest
@@ -349,5 +406,6 @@ Placeholder: this README does not report corpus-level counts, review rates, or m
 - Embedding-based outcome classification
 - Court-specific disposition modeling
 - SQL-backed storage (SQLite or Postgres)
+- A live CourtListener extract for the MTD and appeal-reversal tracks (fixture metrics only until then)
 
 
