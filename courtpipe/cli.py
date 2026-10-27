@@ -5,6 +5,7 @@ from pathlib import Path
 import argparse
 import logging
 import os
+from datetime import date
 
 from utils.run_context import init_run_context, configure_run_logging
 
@@ -39,6 +40,21 @@ def _build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("viz", help="Generate visualizations only")
     sub.add_parser("doctor", help="Quick health check: verify expected files/dirs exist")
+
+    sp_dl = sub.add_parser("download-idb", help="Download the public FJC civil zip into a local cache")
+    sp_dl.add_argument("--out", default="data/idb/cv88on.zip")
+    sp_dl.add_argument("--force", action="store_true")
+
+    sp_ev = sub.add_parser(
+        "evaluate-settlement",
+        help="Score filing-time IDB code-13 settlement on a local civil file",
+    )
+    sp_ev.add_argument("--idb", required=True, help="Local cv88on.zip, the extracted txt, or a csv")
+    sp_ev.add_argument("--report", default="data/model-eval/settlement_report.json")
+    sp_ev.add_argument("--audit-out", default="docs/idb/audit_sample.csv")
+    sp_ev.add_argument("--results-md", default="", help="Optional markdown summary path")
+    sp_ev.add_argument("--as-of", default="", help="Extract as-of date YYYY-MM-DD; default is the zip timestamp")
+    sp_ev.add_argument("--bootstrap", type=int, default=1000)
 
     return p
 
@@ -112,6 +128,36 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "doctor":
         return _doctor(logger)
+
+    if args.cmd == "download-idb":
+        from analysis.idb_download import download_idb
+
+        path = download_idb(Path(args.out), force=bool(args.force))
+        logger.info("Cached IDB zip at %s (%s bytes)", path, path.stat().st_size)
+        return 0
+
+    if args.cmd == "evaluate-settlement":
+        from analysis.idb_evaluate import render_results, run_evaluation
+
+        as_of = date.fromisoformat(args.as_of) if args.as_of else None
+        try:
+            report = run_evaluation(
+                Path(args.idb),
+                Path(args.report),
+                audit_path=Path(args.audit_out) if args.audit_out else None,
+                as_of=as_of,
+                bootstrap_draws=int(args.bootstrap),
+                log=logger.info,
+            )
+        except (FileNotFoundError, ValueError) as exc:
+            logger.error("%s", exc)
+            return 2
+        if args.results_md:
+            Path(args.results_md).write_text(render_results(report))
+            logger.info("Wrote %s", args.results_md)
+        gate = "pass" if report["modeling_gate"]["passed"] else "fail"
+        logger.info("audit_gate=%s modeling_gate=%s", report["audit_gate"], gate)
+        return 0
 
     # Ensure runs/<run_id>/logs/run.log exists for real commands
     _ = _init_run_logging_if_needed(args.cmd, logger)

@@ -124,6 +124,17 @@ courtpipe --help
 courtpipe run --help
 ```
 
+### 4. IDB settlement evaluation (no CourtListener key)
+
+This command scores whether a federal civil case against a corporate defendant, nature of suit 160, 410, or 850, filed in fiscal years 2010–2021, receives disposition code 13. It reads a local copy of the public FJC file. It does not download inside the evaluation command, and it does not use an API key.
+
+```bash
+python scripts/download_idb.py --out data/idb/cv88on.zip
+courtpipe evaluate-settlement --idb data/idb/cv88on.zip --report docs/idb/settlement_report.json
+```
+
+`data/idb/` is gitignored. The measured run, including pass or fail against the bars, is `docs/idb/RESULTS.md`. The hand audit is pending: the sample is `docs/idb/audit_sample.csv` and the rubric is `docs/idb/AUDIT_RUBRIC.md`. The securities class-action spec is not implemented.
+
 
 ## Pipeline Stages
 
@@ -304,6 +315,10 @@ Charts written by `vis/visualizations.py` for that same frame:
 ![Review queue counts for the 20-row fixture](docs/examples/fixture-run/review_queue_overview.png)
 
 ![Coarse macro-F1 for the fixture holdout](docs/examples/fixture-run/model_comparison_f1_macro_coarse.png)
+
+### IDB code-13 settlement run
+
+Recorded in `docs/idb/RESULTS.md` from the public civil file. That page states the cohort size and whether the modeling bars passed. The hand audit on `docs/idb/audit_sample.csv` is still pending, so this README does not call the model a settlement predictor. Those figures are not the fixture scores above.
 
 ### Live CourtListener run
 
