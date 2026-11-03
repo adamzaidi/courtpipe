@@ -87,3 +87,5 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+# iCloud Desktop sync conflict copies ("file 2.py")
+* 2.*

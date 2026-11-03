@@ -1,5 +1,7 @@
 # courtpipe — working notes
 
+**What to do next is in `ROADMAP.md`.** Check it at the start of a session and update it as items land.
+
 Predicting outcomes in federal litigation against corporate defendants. The repo is a portfolio piece for data science roles and law school applications, so the README must stay accurate and recruiter-readable: lead with question, method, result.
 
 ## Tracks
@@ -30,3 +32,4 @@ Spec decisions for MTD (PR #2) and appeal reversal (PR #3) were approved as writ
 - CLI: `courtpipe --help`. README charts: `python scripts/idb_figures.py`.
 - CourtListener REST limits for authenticated users are low (5/min, 50/hr, 125/day); fetchers cache under `data/cache/courtlistener`. Use the bulk snapshot for appeal-scale pulls.
 - Earlier PRs were written by Cursor background agents on `cursor/*` branches.
+- The repo lives on iCloud-synced Desktop. Switching branches can create `file 2.py` sync-conflict copies; `.gitignore` ignores `* 2.*`. Delete them (after `cmp` against the original) rather than committing.
