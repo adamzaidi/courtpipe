@@ -144,3 +144,26 @@ def test_help_lists_new_commands():
     assert "evaluate-mtd" in text
     assert "evaluate-appeal" in text
     assert "fetch-mtd" in text
+
+
+def test_mtd_large_docket_sensitivity_is_aggregate_and_not_a_feature(tmp_path):
+    """Large dockets are profiled and re-scored without them; the flag never reaches the model."""
+    from analysis.mtd.cohort import FORBIDDEN_FROM_FEATURES, build_rows, feature_frame, load_extract
+    from analysis.mtd.evaluate import run_evaluation
+
+    extract = write_mtd(tmp_path / "mtd.jsonl")
+    rows = [json.loads(line) for line in extract.read_text().splitlines() if line.strip()]
+    for i, row in enumerate(rows):
+        row["fetch_large"] = i % 4 == 0
+    extract.write_text("".join(json.dumps(r) + "\n" for r in rows))
+
+    report = run_evaluation(extract, tmp_path / "r.json", bootstrap_draws=40)
+    sens = report["large_docket_sensitivity"]
+    assert sens["large"]["rows"] > 0 and sens["normal"]["rows"] > 0
+    scored = report["split"]["train_rows"] + report["split"]["test_rows"]
+    assert sens["large"]["rows"] + sens["normal"]["rows"] == scored  # quarantine year excluded
+    assert "docket_id" not in json.dumps(sens)
+
+    assert "fetch_large" in FORBIDDEN_FROM_FEATURES
+    cohort, _ = build_rows(load_extract(extract))
+    assert "fetch_large" not in feature_frame(cohort, include_text=True).columns

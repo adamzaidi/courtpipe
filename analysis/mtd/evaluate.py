@@ -450,6 +450,39 @@ def run_evaluation(
         repeat["secondary_auc"] = safe_auc(kept["y_relief"], kept_p)
         repeat["note"] = "Sensitivity dropping test movants seen in training. Not the headline."
 
+    # Large-docket bias check, aggregate only. Large dockets are long, heavily
+    # litigated cases that took more than one fetch run; if they differ from the rest,
+    # a cohort scored before the large-docket queue drains would be skewed.
+    large_mask_all = scored["fetch_large"].astype(bool) if "fetch_large" in scored else pd.Series(False, index=scored.index)
+    large_rows = scored.loc[large_mask_all]
+    normal_rows = scored.loc[~large_mask_all]
+
+    def _profile(frame: pd.DataFrame) -> dict:
+        return {
+            "rows": int(len(frame)),
+            "relief_rate": float(frame["y_relief"].mean()) if len(frame) else None,
+            "by_nos": {str(k): int(v) for k, v in frame["nos"].value_counts().items()},
+            "by_split": {str(k): int(v) for k, v in frame["split"].value_counts().items()},
+            "courts": int(frame["court_id"].nunique()),
+        }
+
+    large_sensitivity = {
+        "large": _profile(large_rows),
+        "normal": _profile(normal_rows),
+        "test_auc_without_large": None,
+        "note": "Secondary. Headline includes large dockets. Fetch state reports how many large dockets are still queued; results are provisional until that queue is empty.",
+    }
+    test_normal = test.loc[~test["fetch_large"].astype(bool)] if "fetch_large" in test else test
+    train_normal = train.loc[~train["fetch_large"].astype(bool)] if "fetch_large" in train else train
+    if (
+        len(large_rows)
+        and len(test_normal) >= 8
+        and test_normal["y_relief"].nunique() > 1
+        and train_normal["y_relief"].nunique() > 1
+    ):
+        _, normal_p = fit_binary(train_normal, test_normal, use_text=True)
+        large_sensitivity["test_auc_without_large"] = safe_auc(test_normal["y_relief"], normal_p)
+
     reasons = []
     if not primary["auc_beats_baseline"]:
         reasons.append("ROC-AUC does not clear the best of nos/court/judge rate baselines with a difference interval above zero.")
@@ -505,6 +538,7 @@ def run_evaluation(
         "three_way": three_way,
         "calibration": {"bins": cal, "ece": ece},
         "repeat_defendant_sensitivity": repeat,
+        "large_docket_sensitivity": large_sensitivity,
         "notes": [
             "Headline is metadata plus pre-order text on every labeled test row.",
             "Judge-level outputs are aggregate bootstrap numbers only.",

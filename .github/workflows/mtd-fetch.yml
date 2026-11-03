@@ -1,18 +1,26 @@
 name: mtd-fetch
 
-# Builds the motion-to-dismiss extract a day at a time within CourtListener's
-# authenticated limits (5/min, 50/hour, 125/day), then scores whatever has
-# accumulated. Case-level data (API cache, extract, audit sample) stays in the
-# Actions cache, which is not downloadable. Only aggregate results are uploaded.
+# Builds the motion-to-dismiss extract within CourtListener's API limits, four runs a
+# day, then scores whatever has accumulated. Case-level data (API cache, extract, audit
+# sample) stays in the Actions cache, which is not downloadable. Only aggregate results
+# are uploaded.
+#
+# Limits are repo variables, so a limit change needs no code change:
+#   gh variable set CL_MAX_PER_MINUTE --body 20
+#   gh variable set CL_MAX_PER_HOUR   --body 200
+#   gh variable set CL_MAX_PER_DAY    --body 2500
+# Unset, they default to the documented 5/min, 50/hour, 125/day. Each run spends
+# 88% of the daily limit divided by RUNS_PER_DAY (27 requests at the defaults,
+# 550 at 2,500/day). Keep RUNS_PER_DAY in step with the cron below.
 
 on:
   schedule:
-    - cron: "17 9 * * *" # daily, 09:17 UTC
+    - cron: "17 */6 * * *" # 00:17, 06:17, 12:17, 18:17 UTC
   workflow_dispatch:
     inputs:
       max_requests:
-        description: "Network requests this run (CourtListener allows 125/day)"
-        default: "110"
+        description: "Network requests this run (blank = the computed per-run budget)"
+        default: ""
       evaluate_only:
         description: "Skip fetching; just re-score the cached extract"
         type: boolean
@@ -28,10 +36,14 @@ concurrency:
 jobs:
   fetch-and-score:
     runs-on: ubuntu-latest
-    timeout-minutes: 240 # 110 requests at 50/hour is ~2.2 hours of waiting
+    timeout-minutes: 330 # GitHub's cap is 360; 550 requests at 200/hour is ~2.75 hours
     env:
       COURTLISTENER_API_KEY: ${{ secrets.COURTLISTENER_API_KEY }}
       EXTRACT: data/extracted/mtd_extract.jsonl
+      CL_MAX_PER_MINUTE: ${{ vars.CL_MAX_PER_MINUTE }}
+      CL_MAX_PER_HOUR: ${{ vars.CL_MAX_PER_HOUR }}
+      CL_MAX_PER_DAY: ${{ vars.CL_MAX_PER_DAY }}
+      RUNS_PER_DAY: "4"
     steps:
       - uses: actions/checkout@v4
 
@@ -53,12 +65,16 @@ jobs:
           key: mtd-extract-${{ github.run_id }}
           restore-keys: mtd-extract-
 
-      - name: Fetch today's dockets
+      - name: Fetch dockets
         if: ${{ !inputs.evaluate_only }}
         env:
-          MAX_REQUESTS: ${{ inputs.max_requests || '110' }}
+          MAX_REQUESTS: ${{ inputs.max_requests }}
         run: |
+          if [ -z "$MAX_REQUESTS" ]; then
+            MAX_REQUESTS=$(( ${CL_MAX_PER_DAY:-125} * 88 / 100 / RUNS_PER_DAY ))
+          fi
           case "$MAX_REQUESTS" in ''|*[!0-9]*) echo "max_requests must be a number" >&2; exit 1;; esac
+          echo "Budget this run: $MAX_REQUESTS requests (limits: ${CL_MAX_PER_MINUTE:-5}/min, ${CL_MAX_PER_HOUR:-50}/hour, ${CL_MAX_PER_DAY:-125}/day)"
           courtpipe fetch-mtd \
             --max-dockets 1000 \
             --max-requests "$MAX_REQUESTS" \
@@ -96,10 +112,13 @@ jobs:
           if state.exists():
               s = json.loads(state.read_text())
               last = s["runs"][-1] if s["runs"] else {}
-              print(f"- Dockets in extract: **{last.get('total_dockets', 0)}** (+{last.get('new_dockets', 0)} this run, {last.get('requests', 0)} requests)")
-              print(f"- Queued: {last.get('queued', 0)} · out of scope: {last.get('skipped_total', 0)} · stopped: {last.get('stop', 'n/a')}")
+              print(f"- Dockets in extract: **{last.get('total_dockets', 0)}** (+{last.get('new_dockets', 0)} this run, {last.get('completed_large', 0)} of them from the large queue; {last.get('requests', 0)} requests)")
+              print(f"- Large-docket queue: **{last.get('large_queue', 0)}** waiting (+{last.get('moved_to_large', 0)} this run)")
+              print(f"- Queued: {last.get('queued', 0)} · skipped: {last.get('skipped_total', 0)} · transient failures this run: {last.get('transient_failures', 0)} · stopped: {last.get('stop', 'n/a')}")
+              large_waiting = last.get("large_queue", 0)
               done = sum(1 for q in s["queries"].values() if q["exhausted"] and not q["pending"])
               print(f"- Candidate searches finished: {done} of {len(s['queries'])}")
+          large_waiting = locals().get("large_waiting", 0)
           report = pathlib.Path("results/mtd_report.json")
           if not report.exists():
               print("\nNot scored yet: no labeled motions to split.")
@@ -112,6 +131,13 @@ jobs:
               print(f"\nTrain {sp['train_rows']} · test {sp['test_rows']} · quarantine {sp['quarantine_rows']}")
               gate = lambda g: ("pass" if g.get("passed") else "fail") if isinstance(g, dict) else g
               print(f"\nModeling gate: **{gate(r['modeling_gate'])}** · audit gate: **{gate(r['audit_gate'])}**")
+              ls = r.get("large_docket_sensitivity") or {}
+              if ls:
+                  lg, nm = ls.get("large", {}), ls.get("normal", {})
+                  fmt = lambda v: "n/a" if v is None else f"{v:.3f}"
+                  print(f"\nLarge dockets in the scored cohort: {lg.get('rows', 0)} (relief rate {fmt(lg.get('relief_rate'))}) vs normal {nm.get('rows', 0)} ({fmt(nm.get('relief_rate'))}). Test AUC without large dockets: {fmt(ls.get('test_auc_without_large'))}")
+              if state.exists() and large_waiting:
+                  print(f"\n**Provisional:** {large_waiting} large dockets are still queued, so the cohort is tilted toward shorter cases until they finish.")
               print("\nScores on a small extract are not results; see docs/mtd/EVALUATION.md for when a score counts.")
           EOF
 
