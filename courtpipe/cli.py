@@ -62,7 +62,18 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     sp_mtd_fetch.add_argument("--out", default="data/extracted/mtd_extract.jsonl")
     sp_mtd_fetch.add_argument("--cache", default="data/cache/courtlistener")
-    sp_mtd_fetch.add_argument("--max-dockets", type=int, default=20)
+    sp_mtd_fetch.add_argument("--max-dockets", type=int, default=20, help="New dockets to add this run")
+    sp_mtd_fetch.add_argument(
+        "--max-requests",
+        type=int,
+        default=None,
+        help="Stop before this many network requests (cached reads are free). CourtListener allows 125/day.",
+    )
+    sp_mtd_fetch.add_argument(
+        "--state",
+        default=None,
+        help="Resume file for search cursors and queued dockets (default: next to --cache)",
+    )
 
     sp_mtd = sub.add_parser(
         "evaluate-mtd",
@@ -219,6 +230,8 @@ def main(argv: list[str] | None = None) -> int:
                 Path(args.cache),
                 max_dockets=int(args.max_dockets),
                 log=logger.info,
+                max_requests=args.max_requests,
+                state_path=Path(args.state) if args.state else None,
             )
         except RuntimeError as exc:
             logger.error("%s", exc)

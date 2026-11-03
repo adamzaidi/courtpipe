@@ -26,6 +26,10 @@ MAX_PER_DAY = 125
 MIN_INTERVAL_SEC = 12.5  # 5/min with a small buffer
 
 
+class BudgetExhausted(RuntimeError):
+    """Raised before a network request that would exceed the run's request budget."""
+
+
 class RateLimiter:
     def __init__(
         self,
@@ -75,7 +79,14 @@ def _cache_key(url: str, params: Optional[dict]) -> str:
 class CourtListenerClient:
     """Modest authenticated (or public search) client with on-disk cache."""
 
-    def __init__(self, cache_dir: Path | str = DEFAULT_CACHE, require_token: bool = True):
+    def __init__(
+        self,
+        cache_dir: Path | str = DEFAULT_CACHE,
+        require_token: bool = True,
+        max_requests: Optional[int] = None,
+    ):
+        self.max_requests = max_requests
+        self.requests_made = 0
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.require_token = require_token
@@ -102,6 +113,9 @@ class CourtListenerClient:
         path = self.cache_dir / f"{key}.json"
         if use_cache and path.exists():
             return json.loads(path.read_text(encoding="utf-8"))
+        if self.max_requests is not None and self.requests_made >= self.max_requests:
+            raise BudgetExhausted(f"request budget of {self.max_requests} used")
+        self.requests_made += 1
         self.limiter.wait()
         logger.info("GET %s", url)
         response = self.session.get(url, params=params, timeout=45)
@@ -109,6 +123,9 @@ class CourtListenerClient:
             retry_after = float(response.headers.get("Retry-After") or 20)
             logger.warning("CourtListener 429; sleeping %.1fs", min(retry_after, 120))
             time.sleep(min(retry_after, 120))
+            if self.max_requests is not None and self.requests_made >= self.max_requests:
+                raise BudgetExhausted(f"request budget of {self.max_requests} used")
+            self.requests_made += 1
             self.limiter.wait()
             response = self.session.get(url, params=params, timeout=45)
         if response.status_code == 401:
@@ -121,6 +138,12 @@ class CourtListenerClient:
         if use_cache:
             path.write_text(json.dumps(payload), encoding="utf-8")
         return payload
+
+    def remaining(self) -> Optional[int]:
+        """Network requests left in this run's budget (None = unlimited)."""
+        if self.max_requests is None:
+            return None
+        return max(0, self.max_requests - self.requests_made)
 
     def search(self, q: str, search_type: str = "r", page_size: int = 20, **extra) -> dict[str, Any]:
         params = {"q": q, "type": search_type, "page_size": page_size}

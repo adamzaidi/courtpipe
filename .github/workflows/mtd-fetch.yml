@@ -1,0 +1,126 @@
+name: mtd-fetch
+
+# Builds the motion-to-dismiss extract a day at a time within CourtListener's
+# authenticated limits (5/min, 50/hour, 125/day), then scores whatever has
+# accumulated. Case-level data (API cache, extract, audit sample) stays in the
+# Actions cache, which is not downloadable. Only aggregate results are uploaded.
+
+on:
+  schedule:
+    - cron: "17 9 * * *" # daily, 09:17 UTC
+  workflow_dispatch:
+    inputs:
+      max_requests:
+        description: "Network requests this run (CourtListener allows 125/day)"
+        default: "110"
+      evaluate_only:
+        description: "Skip fetching; just re-score the cached extract"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: courtlistener-api # never two runs against the same daily limit
+  cancel-in-progress: false
+
+jobs:
+  fetch-and-score:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240 # 110 requests at 50/hour is ~2.2 hours of waiting
+    env:
+      COURTLISTENER_API_KEY: ${{ secrets.COURTLISTENER_API_KEY }}
+      EXTRACT: data/extracted/mtd_extract.jsonl
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install courtpipe
+        run: |
+          python -m pip install -U pip
+          python -m pip install -e .
+
+      - name: Restore extract and API cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            data/cache
+            data/extracted/mtd_extract.jsonl
+          key: mtd-extract-${{ github.run_id }}
+          restore-keys: mtd-extract-
+
+      - name: Fetch today's dockets
+        if: ${{ !inputs.evaluate_only }}
+        env:
+          MAX_REQUESTS: ${{ inputs.max_requests || '110' }}
+        run: |
+          case "$MAX_REQUESTS" in ''|*[!0-9]*) echo "max_requests must be a number" >&2; exit 1;; esac
+          courtpipe fetch-mtd \
+            --max-dockets 1000 \
+            --max-requests "$MAX_REQUESTS" \
+            --cache data/cache/courtlistener \
+            --out "$EXTRACT"
+
+      # Saved before scoring so a failed evaluation never loses a day of fetching.
+      - name: Save extract and API cache
+        if: always() && !inputs.evaluate_only
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            data/cache
+            data/extracted/mtd_extract.jsonl
+          key: mtd-extract-${{ github.run_id }}
+
+      - name: Score the extract
+        id: score
+        continue-on-error: true # too few labeled motions early on is expected
+        run: |
+          mkdir -p results
+          courtpipe evaluate-mtd \
+            --extract "$EXTRACT" \
+            --report results/mtd_report.json \
+            --results-md results/RESULTS.md \
+            --audit-out "$RUNNER_TEMP/audit_sample.csv"
+
+      - name: Progress summary
+        if: always()
+        run: |
+          python - <<'EOF' >> "$GITHUB_STEP_SUMMARY"
+          import json, pathlib
+          print("## Motion-to-dismiss extract\n")
+          state = pathlib.Path("data/cache/mtd_fetch_state.json")
+          if state.exists():
+              s = json.loads(state.read_text())
+              last = s["runs"][-1] if s["runs"] else {}
+              print(f"- Dockets in extract: **{last.get('total_dockets', 0)}** (+{last.get('new_dockets', 0)} this run, {last.get('requests', 0)} requests)")
+              print(f"- Queued: {last.get('queued', 0)} · out of scope: {last.get('skipped_total', 0)} · stopped: {last.get('stop', 'n/a')}")
+              done = sum(1 for q in s["queries"].values() if q["exhausted"] and not q["pending"])
+              print(f"- Candidate searches finished: {done} of {len(s['queries'])}")
+          report = pathlib.Path("results/mtd_report.json")
+          if not report.exists():
+              print("\nNot scored yet: no labeled motions to split.")
+          else:
+              r = json.loads(report.read_text())
+              print("\n### Funnel\n\n| Step | Count |\n| --- | --- |")
+              for k, v in r["funnel"].items():
+                  print(f"| {k.replace('_', ' ')} | {v} |")
+              sp = r["split"]
+              print(f"\nTrain {sp['train_rows']} · test {sp['test_rows']} · quarantine {sp['quarantine_rows']}")
+              gate = lambda g: ("pass" if g.get("passed") else "fail") if isinstance(g, dict) else g
+              print(f"\nModeling gate: **{gate(r['modeling_gate'])}** · audit gate: **{gate(r['audit_gate'])}**")
+              print("\nScores on a small extract are not results; see docs/mtd/EVALUATION.md for when a score counts.")
+          EOF
+
+      - name: Upload aggregate results
+        if: steps.score.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mtd-results
+          path: |
+            results/mtd_report.json
+            results/RESULTS.md
+          retention-days: 30

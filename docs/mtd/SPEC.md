@@ -86,6 +86,12 @@ The first page of the looser phrase query `"Order on Motion to Dismiss for Failu
 
 v1 therefore finds orders by walking docket entries on in-cohort dockets. Search is used to list candidate dockets. It is not used as the label.
 
+### Candidate docket listing (amendment, 3 November 2026, before any live extract was scored)
+
+The fetcher lists candidates with eight RECAP (`type=r`) searches: each of the four in-scope nature-of-suit clauses, crossed with two docket filing-date eras (`dateFiled:[2014-01-01 TO 2019-12-31]` and `dateFiled:[2020-01-01 TO 2023-12-31]`), each with `AND "motion to dismiss"`. It rotates across the eight, one docket at a time, so both sides of the temporal split and all four case types fill at the same rate under the 125-request daily limit. Progress (search cursors, the unvisited queue, out-of-scope dockets) is kept in a resume file, and each run appends to the extract.
+
+This changes which dockets are *visited*, not the cohort rules. Inclusion, the motion and order link, the corporate-movant rule, the label, and the split by motion date are all still decided from docket entries and the parties payload as above. The phrase filter only skips dockets with no text mentioning a motion to dismiss, which could not contribute a row. The eras are by docket filing date, so a 2019 docket with a 2020 motion is still scored on the test side by its motion date. Docket filing dates start in 2014 so that motions filed in 2016 on older dockets can be reached. The order in which hits come back is CourtListener's relevance ranking. That is a selection effect on which dockets are reached first, and the funnel and per-era counts in the report are how it is checked.
+
 ## How the order is mapped to the motion
 
 CM/ECF descriptions can name the document number they resolve. The parser looks for those patterns and is tested against them. The patterns are hypotheses, not a claim that they cover the archive:
