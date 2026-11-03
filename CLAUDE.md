@@ -30,6 +30,7 @@ Spec decisions for MTD (PR #2) and appeal reversal (PR #3) were approved as writ
 
 - `python -m venv .venv && .venv/bin/pip install -e ".[dev]" && .venv/bin/python -m pytest` (NumPy pinned <2 because of matplotlib <3.9).
 - CLI: `courtpipe --help`. README charts: `python scripts/idb_figures.py`.
-- CourtListener REST limits for authenticated users are low (5/min, 50/hr, 125/day); fetchers cache under `data/cache/courtlistener`. Use the bulk snapshot for appeal-scale pulls.
+- CourtListener REST limits default to 5/min, 50/hr, 125/day and are read from `CL_MAX_PER_MINUTE` / `CL_MAX_PER_HOUR` / `CL_MAX_PER_DAY` (GitHub repo variables for `mtd-fetch`). Fetchers cache under `data/cache/courtlistener`. Use the bulk snapshot for appeal-scale pulls.
+- `fetch-mtd` never truncates a docket. Big ones move to a large-docket queue and finish over later runs (see the 2026-11-03 SPEC amendment). Scores are provisional while that queue is non-empty.
 - Earlier PRs were written by Cursor background agents on `cursor/*` branches.
 - The repo lives on iCloud-synced Desktop. Switching branches can create `file 2.py` sync-conflict copies; `.gitignore` ignores `* 2.*`. Delete them (after `cmp` against the original) rather than committing.

@@ -234,6 +234,9 @@ def build_rows(dockets: Iterable[dict[str, Any]]) -> tuple[pd.DataFrame, dict[st
                 "label_source": parsed.get("label_source"),
                 "assigned_to_id": features["assigned_to_id"],
                 "snapshot_date": parse_date(docket.get("snapshot_date")),
+                # Fetch bookkeeping, never a feature: the docket needed more than one
+                # run's request allowance. Used only for the large-docket bias check.
+                "fetch_large": bool(docket.get("fetch_large", False)),
             }
             row.update(features)
             rows.append(row)
@@ -304,4 +307,7 @@ FORBIDDEN_FROM_FEATURES = {
     "y_relief",
     "leave",
     "dateTerminated",
+    # Docket length includes entries after the order, so this flag leaks post-order
+    # information. Bookkeeping for the large-docket bias check only.
+    "fetch_large",
 }

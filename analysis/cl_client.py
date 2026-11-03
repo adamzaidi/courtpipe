@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import time
 from pathlib import Path
 from typing import Any, Optional
@@ -19,10 +20,36 @@ logger = logging.getLogger("courtpipe.cl_client")
 BASE = "https://www.courtlistener.com/api/rest/v4"
 DEFAULT_CACHE = Path("data/cache/courtlistener")
 
-# Documented authenticated defaults. The most restrictive window wins.
-MAX_PER_MINUTE = 5
-MAX_PER_HOUR = 50
-MAX_PER_DAY = 125
+# Documented authenticated defaults (wiki.free.law CourtListener REST v4 overview,
+# checked 2026-11-03). The most restrictive window wins. If Free Law Project grants
+# this account higher limits, set CL_MAX_PER_MINUTE / CL_MAX_PER_HOUR /
+# CL_MAX_PER_DAY in the environment (GitHub repo variables for the workflow);
+# no code change is needed.
+DEFAULT_PER_MINUTE = 5
+DEFAULT_PER_HOUR = 50
+DEFAULT_PER_DAY = 125
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = (os.getenv(name) or "").strip()
+    if not raw:
+        return default
+    value = int(raw)
+    if value <= 0:
+        raise ValueError(f"{name} must be a positive integer")
+    return value
+
+
+def configured_limits() -> tuple[int, int, int]:
+    """(per_minute, per_hour, per_day) from CL_MAX_PER_* or the documented defaults."""
+    return (
+        _env_int("CL_MAX_PER_MINUTE", DEFAULT_PER_MINUTE),
+        _env_int("CL_MAX_PER_HOUR", DEFAULT_PER_HOUR),
+        _env_int("CL_MAX_PER_DAY", DEFAULT_PER_DAY),
+    )
+
+
+MAX_PER_MINUTE, MAX_PER_HOUR, MAX_PER_DAY = DEFAULT_PER_MINUTE, DEFAULT_PER_HOUR, DEFAULT_PER_DAY
 MIN_INTERVAL_SEC = 12.5  # 5/min with a small buffer
 
 
@@ -30,18 +57,28 @@ class BudgetExhausted(RuntimeError):
     """Raised before a network request that would exceed the run's request budget."""
 
 
+class RateLimited(BudgetExhausted):
+    """CourtListener kept answering 429. Ends the run cleanly; nothing is skipped."""
+
+
+class DocketCapReached(RuntimeError):
+    """The current docket used its per-run request allowance. Its cached pages are kept."""
+
+
 class RateLimiter:
     def __init__(
         self,
-        per_minute: int = MAX_PER_MINUTE,
-        per_hour: int = MAX_PER_HOUR,
-        per_day: int = MAX_PER_DAY,
-        min_interval: float = MIN_INTERVAL_SEC,
+        per_minute: Optional[int] = None,
+        per_hour: Optional[int] = None,
+        per_day: Optional[int] = None,
+        min_interval: Optional[float] = None,
     ):
-        self.per_minute = per_minute
-        self.per_hour = per_hour
-        self.per_day = per_day
-        self.min_interval = min_interval
+        env_minute, env_hour, env_day = configured_limits()
+        self.per_minute = per_minute or env_minute
+        self.per_hour = per_hour or env_hour
+        self.per_day = per_day or env_day
+        # Spread requests evenly inside the minute window, with a 4% buffer.
+        self.min_interval = min_interval if min_interval is not None else 60.0 / self.per_minute * 1.04
         self._stamps: list[float] = []
         self._last = 0.0
 
@@ -87,6 +124,8 @@ class CourtListenerClient:
     ):
         self.max_requests = max_requests
         self.requests_made = 0
+        # Absolute requests_made value at which the current docket must yield.
+        self.docket_cap: Optional[int] = None
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.require_token = require_token
@@ -113,21 +152,17 @@ class CourtListenerClient:
         path = self.cache_dir / f"{key}.json"
         if use_cache and path.exists():
             return json.loads(path.read_text(encoding="utf-8"))
-        if self.max_requests is not None and self.requests_made >= self.max_requests:
-            raise BudgetExhausted(f"request budget of {self.max_requests} used")
-        self.requests_made += 1
-        self.limiter.wait()
+        self._spend()
         logger.info("GET %s", url)
         response = self.session.get(url, params=params, timeout=45)
         if response.status_code == 429:
             retry_after = float(response.headers.get("Retry-After") or 20)
             logger.warning("CourtListener 429; sleeping %.1fs", min(retry_after, 120))
             time.sleep(min(retry_after, 120))
-            if self.max_requests is not None and self.requests_made >= self.max_requests:
-                raise BudgetExhausted(f"request budget of {self.max_requests} used")
-            self.requests_made += 1
-            self.limiter.wait()
+            self._spend()
             response = self.session.get(url, params=params, timeout=45)
+            if response.status_code == 429:
+                raise RateLimited("CourtListener returned 429 twice; ending the run")
         if response.status_code == 401:
             raise RuntimeError(
                 "CourtListener returned 401. Re-authenticate COURTLISTENER_API_TOKEN "
@@ -138,6 +173,14 @@ class CourtListenerClient:
         if use_cache:
             path.write_text(json.dumps(payload), encoding="utf-8")
         return payload
+
+    def _spend(self) -> None:
+        if self.max_requests is not None and self.requests_made >= self.max_requests:
+            raise BudgetExhausted(f"request budget of {self.max_requests} used")
+        if self.docket_cap is not None and self.requests_made >= self.docket_cap:
+            raise DocketCapReached("docket request allowance used")
+        self.requests_made += 1
+        self.limiter.wait()
 
     def remaining(self) -> Optional[int]:
         """Network requests left in this run's budget (None = unlimited)."""
