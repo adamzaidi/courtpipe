@@ -1,411 +1,127 @@
-# 👨‍⚖️ courtpipe - Court Opinion Analytics Pipeline
+# courtpipe
 
-> Building a reliable system for extracting, structuring, and reviewing judicial outcomes at scale.
+**Can you predict how corporate federal litigation turns out using only what is known before the ruling, and how can you tell if the model has actually learned something?**
 
+courtpipe predicts outcomes in U.S. federal lawsuits against corporate defendants: whether a case settles, whether a motion to dismiss is granted, and whether a judgment is reversed on appeal. It uses public court data. Each track starts with a spec written before any data is pulled, and its model has to clear that spec's bars. Some tracks fail. Those results are published too.
 
-## Project Overview
+| Track | Question | Data | Status |
+| --- | --- | --- | --- |
+| [Settlement at filing](#result-settlement-at-filing) | Will this case settle? | FJC Integrated Database, 11M federal civil cases | **Scored. Negative result:** the model does not beat a case type x district baseline |
+| [Motion to dismiss](docs/mtd/SPEC.md) | Will a Rule 12(b)(6) motion by a corporate defendant be granted? | CourtListener RECAP dockets and filings | Spec approved, pipeline built and tested on synthetic data; live extract next |
+| [Appeal reversal](docs/appeal-reversal-spec.md) | Will the court of appeals disturb the district court's judgment? | CourtListener bulk opinions | Spec approved, pipeline built and tested on synthetic data; bulk snapshot next |
+| [Opinion outcome labeler](#opinion-outcome-labeler) | What did the court do in this opinion? | CourtListener opinions | Done. This is the extraction tool, not a predictor |
 
-This project builds an ETL + analytics pipeline around U.S. court opinions using the CourtListener API.
+## How models are evaluated
 
-The pipeline is currently designed as a decision support tool and a classifier. It performs three core functions end-to-end:
+Each prediction track has the same protocol, fixed in its spec before any data is scored:
 
-1. Collect court opinions for a query (e.g., `corporation`) and enrich them with court and citation metadata  
-2. Extract outcome signals from opinion text using rule-based labeling with confidence scoring
-3. Triage uncertain cases into a human-in-the-loop review queue, while training baseline ML models for comparison  
+- **Only pre-decision information.** Features are limited to what existed before the ruling. Each spec lists forbidden fields by name. For example, the settlement track bans `PROCPROG`, a field that records how far the case got before it ended. Using it would leak the answer. Tests check the feature builders for leakage.
+- **Temporal split.** Train on older cases and test on newer ones. A docket never appears on both sides of the split. Defendants who appear in training are dropped from the test set, and test cases that couldn't have finished by the extract date are censored.
+- **Binding baselines.** The model has to beat the *best* simple rate baseline: rates by case type, by court, by case type x court and, where available, by judge. Beating a constant rate doesn't count. The baselines are fit on training data, but the one the model must beat is the one that scores best on the test set. That choice is deliberately harsh.
+- **Intervals, not point estimates.** Comparisons use 1,000-draw bootstraps of the test set, resampled by docket where a docket has several rows. A bar passes only if the lower end of the 95% interval for the improvement is above zero.
+- **Hand-audited labels.** Two readers check a stratified sample of the automatic labels. A label counts as usable only if the 95% Wilson lower bound on its accuracy clears the spec's threshold and Cohen's kappa is at least 0.60.
+- **Negative results are results.** A failed bar is reported as a completed evaluation. It is never tuned until it passes.
 
-The project answers the following question:
+## Result: settlement at filing
 
-> How do outcomes vary across courts, and which cases require human review because outcome extraction is uncertain?
+*Can filing-time fields predict whether a federal case against a corporation settles?*
 
+**Data:** the Federal Judicial Center's public civil Integrated Database (10.96M rows scanned). The cohort is stockholder suits, antitrust and securities cases (nature of suit 160, 410 and 850) filed FY2010 to FY2021 with a corporate first-listed defendant. The label is disposition code 13 (settled). Spec: [`docs/idb/SPEC.md`](docs/idb/SPEC.md).
 
+**Split:** 4,864 training cases (FY2010 to FY2017) and 1,196 test cases (FY2018 to FY2021). 2,491 test cases were censored because a case filed then that ran as long as the training 95th percentile (2,574 days) could not have finished by the extract date. 401 more were dropped because their defendant also appears in training. The settlement rate falls from 22.6% in training to 13.4% in test.
 
-## Scope and Design Philosophy
+**Model:** logistic regression on the fields in the civil cover sheet: circuit, district and office; case type; origin; jurisdiction basis and diversity residence; county; jury demand; class-action allegation; amount demanded (binned, with a missing flag); arbitration, pro se and fee-status flags; filing month; and a year trend.
 
-### What This Project Is
+![Test ROC-AUC for the model and each baseline](docs/idb/figures/auc_vs_baselines.png)
 
-- A reproducible ETL + analytics pipeline
-- Focused on opinion-level dispositions, not docket-level procedural status
-- Explicitly uncertainty-aware via confidence scores and review flags
-- Designed with auditability, explainability, and extensibility in mind
+| | Model | Best baseline (case type x district) | Difference, 95% CI | Bar |
+| --- | --- | --- | --- | --- |
+| ROC-AUC | 0.704 [0.663, 0.744] | 0.714 | -0.010 [-0.047, +0.026] | fail |
+| Brier score | 0.111 | 0.112 | +0.001 [-0.004, +0.006] | fail |
 
-### What This Project Is Not
+**Reading it:** the model ranks cases well above chance and beats the constant, case type and district baselines. But nearly all of that signal is already in *which court* and *what kind of case*. The other filing-time fields add nothing measurable. A leave-one-fiscal-year-out check makes the same point: dropping FY2013 or FY2015 from training flips the sign of the gap. So this is not a settlement predictor, and the README doesn't call it one.
 
-- A production-grade legal outcome predictor
-- A substitute for docket metadata or PACER data
-- An attempt to infer the full “true case result” beyond the opinion itself
+![Calibration plot](docs/idb/figures/calibration.png)
 
+Calibration is good where most cases are. 77% of test cases get a predicted probability below 0.2, and observed rates track predictions closely there. Above 0.3 the model is overconfident, though those bins hold few cases.
 
+**Still open:** the 150-row two-reader audit of the code-13 label ([`audit_sample.csv`](docs/idb/audit_sample.csv), [rubric](docs/idb/AUDIT_RUBRIC.md)). Until that audit's Wilson lower bound on precision clears 0.5, code 13 isn't treated as a validated settlement label. Full numbers: [`docs/idb/RESULTS.md`](docs/idb/RESULTS.md) and [`settlement_report.json`](docs/idb/settlement_report.json).
 
-## Outcome Labels
+## In progress: motion to dismiss and appeal reversal
 
-This project classifies what the court did in the opinion, not the full lifecycle outcome of the case.
+Both pipelines are built: cohort selection, labeling, leakage-checked features, baselines and evaluation. Both run end to end on synthetic fixtures in CI. Neither has a result on real data yet, so this README reports none. The fixture metrics in `docs/mtd/RESULTS.md` and `docs/appeal/RESULTS.md` only show that the code runs. They are not findings.
 
-### Coarse Outcome (`outcome_code`)
+- **Motion to dismiss** ([spec](docs/mtd/SPEC.md), [evaluation protocol](docs/mtd/EVALUATION.md)). One row per Rule 12(b)(6) motion by a corporate defendant in stockholder, antitrust, consumer credit or securities cases, 2016 to 2023. The label is granted, granted in part or denied, with leave to amend recorded as a modifier. Inputs are the complaint, the briefs and the docket metadata filed before the order. The judge baseline is the bar to beat, because judge identity alone can memorize grant rates.
+- **Appeal reversal** ([spec](docs/appeal-reversal-spec.md)). One row per appeal. The label is reversed, vacated, remanded or mixed versus a pure affirmance, across all 13 circuits. It is built from CourtListener's quarterly bulk snapshot rather than the rate-limited API.
 
-- **0 — other / unclear**
-- **1 — affirmed_or_dismissed**
-- **2 — changed_or_mixed**  
-  (reversed, vacated, remanded, or mixed outcomes)
+## Data and ethics
 
-### Fine Outcome (`outcome_label_fine`, `outcome_code_fine`)
+- Public sources only: the FJC Integrated Database and CourtListener. Nothing is scraped against a site's terms.
+- No case-level extracts are committed. Caches and extracts are gitignored. Only aggregate results are published.
+- No per-judge scores, ranks or rates are published. A judge can be a model feature, but the judge baseline is reported as a single aggregate number.
+- API keys come from the environment and are never logged or written to reports.
 
-- `affirmed`
-- `dismissed`
-- `reversed`
-- `vacated`
-- `remanded`
-- `mixed`
-- `other`
-
-Each labeled opinion includes:
-- An evidence snippet
-- A confidence score (heuristic, 0–1)
-- A needs_review flag indicating whether human review is recommended
-
-
-
-## Human-in-the-Loop Review
-
-Uncertainty is handled explicitly rather than hidden.
-
-Cases are flagged for review when:
-- The outcome is `other` or `mixed`
-- The confidence score falls below a threshold (default: `0.60`)
-- Strong disposition language is missing or ambiguous
-
-Flagged cases are written to:
-
-```
-data/processed/review_queue.csv
-```
-
-## How to Run the Pipeline
-
-### 1. Clone the repository and install dependencies
-
-Runtime dependencies are declared in `pyproject.toml`. `requirements.txt` only installs that package (`pip install -e .`). It is not a pip freeze.
+## Reproduce
 
 ```bash
-git clone <your_repo_url>
-cd <repo_name>
-python -m venv .venv
-source .venv/bin/activate
-pip install -e .
-```
-
-Tests use the `dev` extra:
-
-```bash
+python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-python -m pytest
+python -m pytest                      # offline: labelers, leakage fixtures, evaluation
 ```
 
-### 2. Set environment variables
-
-A live extract needs a CourtListener token. Set it in the environment:
+Settlement track (public data, no API key):
 
 ```bash
-export COURTLISTENER_API_TOKEN=YOUR_API_TOKEN   # preferred; COURTLISTENER_API_KEY also works
-export COURTLISTENER_EMAIL=your@email.com
+python scripts/download_idb.py --out data/idb/cv88on.zip     # FJC civil file, ~330 MB
+courtpipe evaluate-settlement --idb data/idb/cv88on.zip --report docs/idb/settlement_report.json
+python scripts/idb_figures.py                                 # the two charts above
 ```
 
-`python-dotenv` also reads a `.env` file in the repository root if you create one. Copy `.env.example` and keep the real values local. `.env` is gitignored. Do not commit API keys.
+Recorded run: file SHA-256 `74405231…bbac7223d`, extract as-of date 2026-08-26.
 
-### 3. Run the full pipeline
+Motion to dismiss and appeal reversal need a CourtListener token. Copy `.env.example` to `.env` (gitignored) and set `COURTLISTENER_API_TOKEN`. Then:
+
+```bash
+courtpipe fetch-mtd --max-dockets 40 --out data/extracted/mtd_extract.jsonl
+courtpipe evaluate-mtd --extract data/extracted/mtd_extract.jsonl \
+  --report data/model-eval/mtd_report.json --results-md docs/mtd/RESULTS.md
+
+courtpipe fetch-appeal --max-clusters 80 --out data/extracted/appeal_extract.jsonl
+courtpipe evaluate-appeal --extract data/extracted/appeal_extract.jsonl --snapshot-year 2025 \
+  --report data/model-eval/appeal_report.json --results-md docs/appeal/RESULTS.md
+```
+
+To run either on synthetic fixtures without a token, use `tests/fixtures/{mtd,appeal}/build_extract.py`. `courtpipe --help` lists every command.
+
+## Opinion outcome labeler
+
+This was the project's first stage, and it is still the label source for the opinion-based tracks. It is an ETL pipeline over CourtListener opinions:
+
+1. **Extract** opinions for a query, with court, jurisdiction and citation metadata.
+2. **Label** what the court did from the opinion text, using rules: `affirmed`, `dismissed`, `reversed`, `vacated`, `remanded`, `mixed` or `other`. Each label comes with an evidence snippet and a 0 to 1 confidence score.
+3. **Triage.** Labels that are `other`, `mixed`, or have confidence below 0.60 go to a human review queue (`data/processed/review_queue.csv`) instead of being trusted silently.
 
 ```bash
 courtpipe run --query "corporation" --max-cases 500
+python scripts/fixture_results.py --out docs/examples/fixture-run   # offline 20-row demo
 ```
 
-(Users can always discover options with:)
+This stage *extracts* outcomes from text that already contains them. Its classifier metrics measure extraction, not prediction, which is why the prediction tracks above use separate cohorts and pre-decision features. Data dictionary: [`data/reference-tables/`](data/reference-tables/).
 
-```bash
-courtpipe --help
-courtpipe run --help
-```
-
-### 4. IDB settlement evaluation (no CourtListener key)
-
-This command scores whether a federal civil case against a corporate defendant, nature of suit 160, 410, or 850, filed in fiscal years 2010–2021, receives disposition code 13. It reads a local copy of the public FJC file. It does not download inside the evaluation command, and it does not use an API key.
-
-```bash
-python scripts/download_idb.py --out data/idb/cv88on.zip
-courtpipe evaluate-settlement --idb data/idb/cv88on.zip --report docs/idb/settlement_report.json
-```
-
-`data/idb/` is gitignored. The measured run, including pass or fail against the bars, is `docs/idb/RESULTS.md`. The hand audit is pending: the sample is `docs/idb/audit_sample.csv` and the rubric is `docs/idb/AUDIT_RUBRIC.md`. The securities class-action spec is not implemented.
-
-### 5. Motion-to-dismiss outcome predictor (offline fixture, then a local live pull)
-
-Predicts whether a corporate defendant's Rule 12(b)(6) motion was granted, granted in part, or denied. Features are pre-order only. The spec is `docs/mtd/SPEC.md` and the evaluation protocol is `docs/mtd/EVALUATION.md`.
-
-The token is read from `COURTLISTENER_API_TOKEN` if set, else `COURTLISTENER_API_KEY`. It is never printed, logged, or written into a report. This environment usually has no token. CI and the default path therefore score a small synthetic extract.
-
-```bash
-python tests/fixtures/mtd/build_extract.py
-courtpipe evaluate-mtd \
-  --extract tests/fixtures/mtd/extract.jsonl \
-  --report data/model-eval/mtd_report.json \
-  --results-md docs/mtd/RESULTS.md \
-  --bootstrap 200
-```
-
-Live pull, run locally by the owner after exporting a token (modest, cached, rate-limited):
-
-```bash
-export COURTLISTENER_API_TOKEN=...   # or COURTLISTENER_API_KEY
-export COURTLISTENER_EMAIL=you@example.com
-courtpipe fetch-mtd --max-dockets 20 --cache data/cache/courtlistener --out data/extracted/mtd_extract.jsonl
-courtpipe evaluate-mtd --extract data/extracted/mtd_extract.jsonl --report data/model-eval/mtd_report.json
-courtpipe smoke-mtd
-```
-
-`data/cache/` and `data/extracted/` are gitignored. Fixture scores are not a grant rate. The two-reader 120-row audit is pending.
-
-### 6. Appeal-reversal predictor (offline fixture, then bulk or a local live pull)
-
-Predicts `y_disturb`: whether a federal court of appeals reversed, vacated, remanded, or mixed a district judgment, versus a pure affirmance. Features are dated on or before the argument date (else the appeal filing date). The spec is `docs/appeal-reversal-spec.md`.
-
-The corpus path in that spec is one CourtListener bulk snapshot on the operator's machine, not paging the REST API (authenticated defaults are 5 requests/minute, 50/hour, 125/day). Evaluation itself downloads nothing.
-
-```bash
-python tests/fixtures/appeal/build_extract.py
-courtpipe evaluate-appeal \
-  --extract tests/fixtures/appeal/extract.jsonl \
-  --snapshot-year 2025 \
-  --report data/model-eval/appeal_report.json \
-  --results-md docs/appeal/RESULTS.md \
-  --bootstrap 200
-```
-
-Live commands the owner runs locally:
-
-```bash
-# Preferred v1 corpus: download a quarterly bulk snapshot into a gitignored folder, then
-# convert / score it. Do not page thirteen circuits through the REST API.
-# Modest optional REST pull (cached, rate-limited, needs a token):
-export COURTLISTENER_API_TOKEN=...
-courtpipe fetch-appeal --max-clusters 20 --cache data/cache/courtlistener --out data/extracted/appeal_extract.jsonl
-courtpipe evaluate-appeal --extract data/extracted/appeal_extract.jsonl --report data/model-eval/appeal_report.json
-courtpipe smoke-appeal
-```
-
-Judge-level outputs are aggregate only (one AUC/Brier for the judge-rate baseline). Per-judge ranks are not written.
-
-
-## Pipeline Stages
-
-### 1. Extract
-- Source: CourtListener `/search/` and `/opinions/` endpoints  
-- Enrichment includes:
-  - Court metadata and jurisdiction
-  - Canonical Citation data
-  - Opinion text signals (when available)
-
-**Output**
-```
-data/extracted/raw_data.csv
-```
-
-
-
-### 2. Transform
-- Normalizes types and timestamps
-- Cleans court and citation fields
-- Extracts opinion text signals
-- Applies rule-based outcome labeling from opinion text
-- Computes:
-  - Confidence score
-  - Disposition-zone indicators
-  - Review flags
-
-**Outputs**
-```
-data/processed/processed_data.csv
-data/processed/review_queue.csv
-```
-
-
-
-### 3. Load
-- Loads processed data into a pandas DataFrame
-- Performs lightweight schema and quality validation
-
-
-
-### 4. Modeling
-- Baseline classifiers:
-  - Logistic Regression
-  - Random Forest
-- Features:
-  - One-hot encoded court identifiers
-- Labels:
-  - Coarse (`outcome_code`)
-  - Fine (`outcome_code_fine`)
-- Training skips gracefully if only one class is present
-
-**Outputs**
-```
-data/model-eval/
-├── classification_report_*.csv
-├── confusion_*.csv
-└── evaluation_summary.json
-```
-
-
-
-### 5. Visualizations
-
-Generates report-ready charts, including:
-- Outcome distributions
-- Top courts by volume
-- Court Pareto analysis
-- Outcomes over time
-- Opinion word count distributions
-
-**Outputs**
-```
-data/outputs/*.png
-```
-
-
-
-## Validation and Logging
-
-- All pipeline steps log to:
-```
-logs/pipeline.log
-```
-- Schema and domain validation occurs after loading
-- Model training always writes evaluation artifacts, even if training is skipped
-
-
-
-## Repository Structure
+## Repository layout
 
 ```
-.
-├── courtpipe/           # Installed package + CLI
-│   ├── __init__.py
-│   ├── __main__.py      # python -m courtpipe
-│   └── cli.py           # courtpipe CLI entrypoint
-│
-├── etl/                 # Extract / Transform / Load stages
-├── analysis/            # Modeling and evaluation
-├── vis/                 # Visualization generation
-├── utils/               # Logging, validation, helpers
-│
-├── data/
-│   ├── extracted/       # Raw extracted opinions (CSV)
-│   ├── processed/       # Labeled + cleaned tables
-│   ├── model-eval/      # Metrics, confusion matrices
-│   ├── outputs/         # Plots
-│   └── reference-tables/
-│
-├── tests/               # Offline pytest suite + synthetic opinion / MTD / appeal fixtures
-├── scripts/             # fixture_results.py (offline example metrics)
-├── docs/examples/       # Charts and JSON from the fixture run
-├── .github/workflows/   # CI: install the package and run pytest
-│
-├── runs/                # Per-run artifacts (params, logs, outputs)
-├── logs/                # Console / pipeline logs
-│
-├── pyproject.toml       # Packaging + dependencies
-├── requirements.txt     # Installs this package; not a pip freeze
-├── README.md
-└── .gitignore
+courtpipe/    CLI entry point (courtpipe ...)
+etl/          opinion extract / transform / load
+analysis/     idb_*.py settlement track; mtd/ and appeal/ predictors; shared metrics and CourtListener client
+vis/          charts for the opinion pipeline
+scripts/      IDB download, README figures, offline fixture demo
+docs/         specs, evaluation protocols, audit samples and recorded results per track
+tests/        offline pytest suite with synthetic fixtures (runs in GitHub Actions)
 ```
 
+## Limitations
 
-
-## Data Dictionaries
-
-Reference tables are located in:
-
-```
-data/reference-tables/
-```
-
-They document:
-- Raw extraction fields
-- Processed dataset columns
-- Outcome codes and meanings
-
-
-
-## Results
-
-### Fixture run (no API key)
-
-The tables and charts below were produced by labeling the 20 synthetic snippets in `tests/fixtures/sample_opinions.csv` and training the models in `analysis/model.py` on that table. They are not CourtListener corpus statistics.
-
-Regenerate them from a checkout (no API key, no network):
-
-```bash
-python scripts/fixture_results.py --out docs/examples/fixture-run
-```
-
-This recording used Python 3.12.3 with the packages resolved from `pyproject.toml` on that run: numpy 1.26.4, pandas 3.0.6, scikit-learn 1.9.1, matplotlib 3.8.4. The held-out split is 6 rows (`test_size=0.3`, `random_state=42`). Logistic regression logged a convergence warning: `lbfgs` stopped at `max_iter=1500`. Read these metrics as a smoke check that labeling, review flags, and evaluation artifacts run offline. They are not a measure of outcome-prediction quality.
-
-`scripts/fixture_results.py` printed:
-
-```text
-rows: 20
-fine labels: {"affirmed": 4, "dismissed": 4, "mixed": 2, "other": 3, "remanded": 2, "reversed": 3, "vacated": 2}
-coarse codes: {"0": 3, "1": 8, "2": 9}
-review: 7 needs_review / 13 auto_pass
-confidence min/p50/p90/max: 0.25 / 0.80 / 1.00 / 1.00
-coarse_baseline_most_frequent: acc=0.3333 f1_macro=0.1667 f1_weighted=0.1667 n_test=6
-coarse_logreg: acc=0.5000 f1_macro=0.5222 f1_weighted=0.4944 n_test=6
-coarse_random_forest: acc=0.8333 f1_macro=0.7778 f1_weighted=0.8333 n_test=6
-fine_baseline_most_frequent: acc=0.1667 f1_macro=0.0476 f1_weighted=0.0476 n_test=6
-fine_logreg: acc=0.0000 f1_macro=0.0000 f1_weighted=0.0000 n_test=6
-fine_random_forest: acc=0.6667 f1_macro=0.5556 f1_weighted=0.5556 n_test=6
-```
-
-Unrounded JSON is in `docs/examples/fixture-run/summary.json` and `docs/examples/fixture-run/evaluation_summary.json`. Coarse code 0 is other/unclear (3 rows), code 1 is affirmed or dismissed (8 rows), and code 2 is changed or mixed (9 rows). Seven of the 20 rows were flagged `needs_review`.
-
-Charts written by `vis/visualizations.py` for that same frame:
-
-![Coarse outcome distribution for the 20-row fixture](docs/examples/fixture-run/outcome_distribution.png)
-
-![Review queue counts for the 20-row fixture](docs/examples/fixture-run/review_queue_overview.png)
-
-![Coarse macro-F1 for the fixture holdout](docs/examples/fixture-run/model_comparison_f1_macro_coarse.png)
-
-### IDB code-13 settlement run
-
-Recorded in `docs/idb/RESULTS.md` from the public civil file. That page states the cohort size and whether the modeling bars passed. The hand audit on `docs/idb/audit_sample.csv` is still pending, so this README does not call the model a settlement predictor. Those figures are not the fixture scores above.
-
-### Live CourtListener run
-
-Not included. A live extract calls the CourtListener API and needs `COURTLISTENER_API_KEY`. Those outputs are gitignored and are not in this repository.
-
-Placeholder: this README does not report corpus-level counts, review rates, or model scores. After you run `courtpipe run`, copy figures from the files that run wrote:
-
-- `data/processed/processed_data.csv`
-- `data/processed/review_queue.csv`
-- `data/model-eval/evaluation_summary.json`
-- `data/outputs/*.png`
-
-
-
-## Known Limitations
-
-- Opinion text does not always contain explicit disposition language
-- CourtListener `plain_text` availability is inconsistent
-- Outcome labeling relies on heuristics, not authoritative docket status
-- Models use intentionally simple features (court only)
-
-
-
-## Future Extensions
-
-- Active learning using review queue feedback
-- Docket-level enrichment
-- Embedding-based outcome classification
-- Court-specific disposition modeling
-- SQL-backed storage (SQLite or Postgres)
-- A live CourtListener extract for the MTD and appeal-reversal tracks (fixture metrics only until then)
-
-
+- The settlement label is FJC disposition code 13. That code is a docket clerk's entry, and its accuracy hasn't been audited yet.
+- RECAP contains only what someone uploaded. Motion-to-dismiss coverage won't match the national docket, and missing PDFs stay missing rather than being filled in.
+- Filing-time fields are thin. The settlement result suggests that useful signal will need the text of the complaint and briefs, which the motion-to-dismiss track is designed to test.
