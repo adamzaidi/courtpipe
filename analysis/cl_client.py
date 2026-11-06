@@ -128,6 +128,9 @@ class CourtListenerClient:
         self.docket_cap: Optional[int] = None
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+        # Cache files read or written since the last track_cache() call. The MTD fetch
+        # uses this to delete a docket's raw pages once its extract row is written.
+        self._tracked: Optional[set[Path]] = None
         self.require_token = require_token
         self.limiter = RateLimiter()
         self.session = requests.Session()
@@ -150,6 +153,8 @@ class CourtListenerClient:
     def get_json(self, url: str, params: Optional[dict] = None, use_cache: bool = True) -> dict[str, Any]:
         key = _cache_key(url, params)
         path = self.cache_dir / f"{key}.json"
+        if use_cache and self._tracked is not None:
+            self._tracked.add(path)
         if use_cache and path.exists():
             return json.loads(path.read_text(encoding="utf-8"))
         self._spend()
@@ -173,6 +178,26 @@ class CourtListenerClient:
         if use_cache:
             path.write_text(json.dumps(payload), encoding="utf-8")
         return payload
+
+    def track_cache(self) -> None:
+        """Start recording which cache files the following requests touch."""
+        self._tracked = set()
+
+    def drop_tracked_cache(self) -> int:
+        """Delete every cache file touched since track_cache(); stop tracking. Returns bytes freed."""
+        freed = 0
+        for path in self._tracked or ():
+            try:
+                freed += path.stat().st_size
+                path.unlink()
+            except FileNotFoundError:
+                pass
+        self._tracked = None
+        return freed
+
+    def stop_tracking_cache(self) -> None:
+        """Stop recording without deleting anything (the docket will resume from cache)."""
+        self._tracked = None
 
     def _spend(self) -> None:
         if self.max_requests is not None and self.requests_made >= self.max_requests:

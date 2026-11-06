@@ -98,6 +98,7 @@ The first scheduled run spent its whole request budget paging one very large doc
 
 - A new docket may use up to fifteen network requests per run (five until 6 November 2026, when the higher API limits made room). If it needs more, it moves to a large-docket queue. It is not truncated.
 - Each run reserves 50% of its budget for continuing the large-docket queue (30% until 6 November 2026). Pages already fetched are cached, so a large docket picks up where it stopped and finishes over several runs.
+- Once a docket's outcome is recorded (in the extract, or skipped as out of scope or gone), its raw API pages are deleted from the cache (added 6 November 2026). The extract row holds everything the pipeline reads, and the raw pages would push the Actions cache past GitHub's 10 GB limit partway through the cohort. Queued and retrying dockets keep their pages so they resume from cache. Search pages are kept. Re-deriving an extract row from raw pages now costs a refetch.
 - Every docket in the extract is read in full. The extract records `fetch_large` for dockets that took more than one run.
 - `fetch_large` is not a feature. Docket length includes entries after the order, so the flag leaks post-order information. It is on the forbidden list.
 - The report profiles large and normal dockets (rows, relief rate, nature of suit, split, courts) and gives a test AUC with large dockets left out. This is a secondary sensitivity, not the headline.

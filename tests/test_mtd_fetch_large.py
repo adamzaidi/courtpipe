@@ -32,6 +32,7 @@ class Behaviour:
         self.gone: set[int] = set()
         self.rate_limit_after: int | None = None  # network requests before 429s start
         self.cache: set[tuple] = set()  # survives across runs, like the disk cache
+        self.dropped: set[tuple] = set()  # cache entries deleted after a docket settled
         self.network = 0
 
 
@@ -42,8 +43,23 @@ class FakeClient:
         self.max_requests = max_requests
         self.requests_made = 0
         self.docket_cap = None
+        self._tracked = None
+
+    def track_cache(self):
+        self._tracked = set()
+
+    def drop_tracked_cache(self):
+        self.behaviour.cache -= self._tracked or set()
+        self.behaviour.dropped |= self._tracked or set()
+        self._tracked = None
+        return 0
+
+    def stop_tracking_cache(self):
+        self._tracked = None
 
     def _get(self, key):
+        if self._tracked is not None:
+            self._tracked.add(key)
         if key in self.behaviour.cache:
             return
         if self.max_requests is not None and self.requests_made >= self.max_requests:
@@ -205,3 +221,33 @@ def test_bad_limit_is_rejected(monkeypatch):
     monkeypatch.setenv("CL_MAX_PER_DAY", "0")
     with pytest.raises(ValueError):
         configured_limits()
+
+
+def test_finished_dockets_drop_their_cache_and_large_ones_keep_it(tmp_path, behaviour):
+    _run(tmp_path, max_requests=30)
+    done = {r["docket_id"] for r in _rows(tmp_path)}
+    assert done and LARGE not in done
+    for d in done:
+        assert not any(k[1] == d for k in behaviour.cache if k[0] != "search"), "finished docket pages are deleted"
+    assert any(k[1] == LARGE for k in behaviour.cache if k[0] == "entries"), "queued large docket keeps its pages to resume"
+    assert any(k[0] == "search" for k in behaviour.cache), "search pages are not tracked"
+
+    for _ in range(10):
+        _run(tmp_path, max_requests=30)
+    assert LARGE in {r["docket_id"] for r in _rows(tmp_path)}
+    assert not any(k[0] != "search" for k in behaviour.cache), "every settled docket's pages are gone"
+
+
+def test_client_drops_only_tracked_cache_files(tmp_path, monkeypatch):
+    from analysis import cl_client
+
+    client = cl_client.CourtListenerClient(cache_dir=tmp_path, require_token=False)
+    keep_url, drop_url = "https://x/search/", "https://x/dockets/1/"
+    for url in (keep_url, drop_url):
+        (tmp_path / f"{cl_client._cache_key(url, None)}.json").write_text("{}")
+    client.get_json(keep_url)  # untracked cache hit
+    client.track_cache()
+    client.get_json(drop_url)  # tracked cache hit, no network
+    assert client.drop_tracked_cache() == 2
+    assert (tmp_path / f"{cl_client._cache_key(keep_url, None)}.json").exists()
+    assert not (tmp_path / f"{cl_client._cache_key(drop_url, None)}.json").exists()
