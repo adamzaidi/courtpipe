@@ -17,7 +17,11 @@ from analysis.cl_client import (
 )
 
 LARGE = 1  # first docket of query 0 has many entry pages
-LARGE_PAGES = 12
+# Always well past the new-docket allowance, whatever it is set to.
+LARGE_PAGES = fetch.NEW_DOCKET_ALLOWANCE + 7
+# Enough to reach query 1's first docket (101): query 0's search (1) + large docket 1
+# capped at its allowance, then query 1's search (1) and docket 101 (3).
+REACH_101 = 1 + fetch.NEW_DOCKET_ALLOWANCE + 1 + 3
 
 
 class Behaviour:
@@ -145,11 +149,9 @@ def test_unlimited_budget_finishes_large_docket_next_run(tmp_path, behaviour):
     assert state["large"] == []
 
 
-# Budget 10 reaches query 1's first docket (101): query 0's search (1) + large docket 1
-# capped at its allowance (5), then query 1's search (1) and docket 101.
 def test_timeout_is_retried_on_a_later_run(tmp_path, behaviour):
     behaviour.timeouts[101] = 1
-    state = _run(tmp_path, max_requests=10)
+    state = _run(tmp_path, max_requests=REACH_101)
     assert state["attempts"] == {"101": 1}
     assert 101 not in state["skipped"]
     for _ in range(6):
@@ -167,7 +169,7 @@ def test_persistent_timeout_is_skipped_after_three_attempts(tmp_path, behaviour)
 
 def test_404_is_skipped_immediately(tmp_path, behaviour):
     behaviour.gone.add(101)
-    state = _run(tmp_path, max_requests=10)
+    state = _run(tmp_path, max_requests=REACH_101)
     assert 101 in state["skipped"]
     assert state["attempts"] == {}
 

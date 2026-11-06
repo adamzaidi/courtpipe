@@ -96,8 +96,8 @@ This changes which dockets are *visited*, not the cohort rules. Inclusion, the m
 
 The first scheduled run spent its whole request budget paging one very large docket and added nothing. A per-docket page cap would fix the budget problem but skew the cohort. The dockets that hit a cap are long, heavily litigated cases (consolidated securities class actions, MDLs, motions against second or third amended complaints), and their grant rates may differ. A cap would also cut off orders that arrive after the window and turn slow-to-resolve motions into "unresolved" exclusions. So:
 
-- A new docket may use up to five network requests per run. If it needs more, it moves to a large-docket queue. It is not truncated.
-- Each run reserves 30% of its budget for continuing the large-docket queue. Pages already fetched are cached, so a large docket picks up where it stopped and finishes over several runs.
+- A new docket may use up to fifteen network requests per run (five until 6 November 2026, when the higher API limits made room). If it needs more, it moves to a large-docket queue. It is not truncated.
+- Each run reserves 50% of its budget for continuing the large-docket queue (30% until 6 November 2026). Pages already fetched are cached, so a large docket picks up where it stopped and finishes over several runs.
 - Every docket in the extract is read in full. The extract records `fetch_large` for dockets that took more than one run.
 - `fetch_large` is not a feature. Docket length includes entries after the order, so the flag leaks post-order information. It is on the forbidden list.
 - The report profiles large and normal dockets (rows, relief rate, nature of suit, split, courts) and gives a test AUC with large dockets left out. This is a secondary sensitivity, not the headline.

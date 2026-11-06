@@ -48,13 +48,15 @@ IN_SCOPE_NOS = {"160", "410", "480", "850"}
 MIN_REQUESTS_PER_DOCKET = 3
 
 # Network requests a new docket may use in one run before it moves to the large-docket
-# queue (docket + parties + three 100-entry pages). Nothing is dropped: a large docket
-# resumes on later runs and its already-fetched pages come from the cache for free.
-NEW_DOCKET_ALLOWANCE = 5
+# queue (docket + parties + up to thirteen 100-entry pages). Nothing is dropped: a large
+# docket resumes on later runs and its already-fetched pages come from the cache for free.
+# Raised from 5 on 2026-11-06 once the EDU limits gave each run ~2,200 requests: at 5,
+# about three in four new dockets were being queued.
+NEW_DOCKET_ALLOWANCE = 15
 
 # Share of a run's budget reserved for continuing large dockets. Unused reserve goes
-# to new dockets.
-LARGE_SHARE = 0.3
+# to new dockets. Raised from 0.3 on 2026-11-06 so the queue drains instead of growing.
+LARGE_SHARE = 0.5
 
 # Timeouts, connection errors and 5xx get this many attempts across runs before the
 # docket is skipped. A 404/410 is skipped at once.
