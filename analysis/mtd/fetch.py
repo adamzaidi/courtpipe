@@ -201,6 +201,7 @@ def _try_docket(
     transient, gone. BudgetExhausted (including RateLimited) propagates and ends the run.
     """
     client.docket_cap = None if cap is None else client.requests_made + cap
+    client.track_cache()
     try:
         row = _docket_row(client, docket_id, hit, large=large)
         return ("out_of_scope", None, "") if row is None else ("done", row, "")
@@ -254,7 +255,18 @@ def fetch_mtd_extract(
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.touch()
 
-    counts = {"added": 0, "added_large": 0, "moved_to_large": 0, "transient": 0}
+    counts = {"added": 0, "added_large": 0, "moved_to_large": 0, "transient": 0, "cache_bytes_freed": 0}
+
+    def settle_cache(status: str) -> None:
+        """A finished or skipped docket's raw pages are redundant once its outcome is
+        recorded: the extract row holds everything the pipeline reads. Capped and
+        transient dockets keep theirs so they resume from cache. Call after the state
+        that records the outcome is saved, so a crash in between costs a refetch,
+        never a lost docket."""
+        if status in ("done", "out_of_scope", "gone"):
+            counts["cache_bytes_freed"] += client.drop_tracked_cache()
+        else:
+            client.stop_tracking_cache()
 
     def write_row(row: dict[str, Any]) -> None:
         with out_path.open("a", encoding="utf-8") as handle:
@@ -295,6 +307,7 @@ def fetch_mtd_extract(
             cap = None if reserve_end is None else reserve_end - client.requests_made
             status, row, detail = _try_docket(client, docket_id, hit, cap, large=True)
             if status == "capped":
+                client.stop_tracking_cache()
                 break  # reserve used; the docket keeps its place at the front
             state["large"].pop(0)
             if status == "done":
@@ -308,6 +321,7 @@ def fetch_mtd_extract(
             elif status in ("gone", "out_of_scope"):
                 skip(docket_id, detail)
             _save_state(state_path, state)
+            settle_cache(status)
 
         # Phase 2: new dockets, rotating across the candidate searches.
         turn = 0
@@ -353,6 +367,7 @@ def fetch_mtd_extract(
             else:
                 skip(docket_id, detail)
             _save_state(state_path, state)
+            settle_cache(status)
     except RateLimited:
         stop_reason = "rate limited (429)"
     except BudgetExhausted:
@@ -368,15 +383,16 @@ def fetch_mtd_extract(
         "large_queue": len(state["large"]),
         "skipped_total": len(skipped),
         "queued": len(queued),
+        "cache_mb_freed": round(counts["cache_bytes_freed"] / 1_048_576, 1),
         "stop": stop_reason,
     }
     state["runs"].append(run)
     _save_state(state_path, state)
     log(
         "added %s dockets (%s from the large queue; %s total), %s moved to the large queue "
-        "(%s waiting), %s requests; stopped: %s",
+        "(%s waiting), %s requests, %.1f MB of finished-docket cache freed; stopped: %s",
         counts["added"], counts["added_large"], len(have), counts["moved_to_large"],
-        len(state["large"]), client.requests_made, stop_reason,
+        len(state["large"]), client.requests_made, run["cache_mb_freed"], stop_reason,
     )
     return out_path
 

@@ -30,6 +30,16 @@ class FakeClient:
         self.docket_calls: list[int] = []
         FakeClient.instances.append(self)
 
+    # No cache in this fake; pruning is covered in test_mtd_fetch_large.py.
+    def track_cache(self):
+        pass
+
+    def drop_tracked_cache(self):
+        return 0
+
+    def stop_tracking_cache(self):
+        pass
+
     def _spend(self):
         if self.max_requests is not None and self.requests_made >= self.max_requests:
             raise BudgetExhausted("budget")
