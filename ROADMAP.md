@@ -10,7 +10,7 @@ Last updated 2026-11-20.
 - [x] **Retry read timeouts instead of skipping the docket forever.** Done 2026-11-03. Right now a timeout puts the docket on the permanent `skipped` list (docket 16367238 on the first run). A timeout should send the docket back to the queue, and only a 404 should count as a permanent skip.
 - [x] **Higher CourtListener API limit.** Granted 2026-11-05 as an EDU membership: 5,000/hour, no minute or day cap, renews 2027-05-04. Allowance raised to 15 and large-docket share to 50% (#8); finished dockets' raw pages pruned (#9).
 - [x] **Move the fetch off GitHub.** Done 2026-11-20. GitHub `mtd-fetch` is disabled. The fetch runs in a private Kaggle notebook, 11 hours per run at 3,000/hour (about 33,000 requests, about 3,000 dockets), with state carried in a private Kaggle dataset. The extract keeps full filing text (SPEC amendment, 2026-11-20). Kaggle replaced the earlier plan of an overnight job on the AZ drive. AZ is now only a backup.
-- [ ] **Run the Kaggle fetch until the searches and the large-docket queue are empty.** `scripts/kaggle-mtd.sh start` after each run finishes (about 12 hours); `status` shows progress. Read `results/run_summary.json` each time. A run that adds 0 dockets means the fetcher has a problem, not a data result.
+- [ ] **Run the Kaggle fetch until the searches and the large-docket queue are empty.** After each run finishes (about 12 hours): `scripts/kaggle-mtd.sh start` saves its state and opens the editor, then click Save Version → Save & Run All. `status` shows progress. First real run started 2026-11-20 ~3:19 PM ET. Read `results/run_summary.json` each time. A run that adds 0 dockets means the fetcher has a problem, not a data result.
 
 ## Next
 

@@ -2,15 +2,22 @@
 # Run the motion-to-dismiss fetch on Kaggle instead of this Mac.
 #
 #   scripts/kaggle-mtd.sh setup    # once: create the private state dataset
-#   scripts/kaggle-mtd.sh start    # save the last run's output as the new state, start the next run
+#   scripts/kaggle-mtd.sh start    # save the last run's output as the new state, then open the
+#                                  # editor so you click Save Version to start the next run
+#   scripts/kaggle-mtd.sh push     # upload new notebook code (only after kaggle/ or courtpipe changes)
 #   scripts/kaggle-mtd.sh status   # is a run going, and what did the last one do
 #   scripts/kaggle-mtd.sh pull     # download the last run's output without starting another
 #
 # Each Kaggle run fetches for 11 hours (about 33,000 requests at 3,000/hour), scores the
 # extract, and leaves its state in its output. `start` downloads that output to
-# $COURTPIPE_DATA (default ~/courtpipe-data, off iCloud), uploads it as a new version of
-# the private dataset zaidiadam/courtpipe-mtd-state, then pushes the notebook pinned to
-# this repo's current commit. Your Mac only needs to be on for those few minutes.
+# $COURTPIPE_DATA (default ~/courtpipe-data, off iCloud) and uploads it as a new version of
+# the private dataset zaidiadam/courtpipe-mtd-state.
+#
+# Runs are started from the browser (Save Version -> Save & Run All), not with
+# `kaggle kernels push`: Kaggle gives secrets only to versions saved in the editor
+# (confirmed 2026-11-20; pushed versions fail with HTTP 400 from UserSecretsClient).
+# `push` still uploads code changes, pinned to this repo's current commit; reload the
+# editor afterwards or Save Version fails with a ConcurrencyViolation.
 #
 # Needs KAGGLE_API_TOKEN in .env, the Kaggle CLI in $COURTPIPE_DATA/.kaggle-venv, and
 # the CourtListener token stored once as a Kaggle Secret on the notebook (label
@@ -32,6 +39,17 @@ kernel_status() {  # prints running / queued / complete / error / cancel... / no
   local out
   out="$("$KAGGLE" kernels status "$KERNEL" 2>&1)" || { echo none; return; }
   echo "$out" | sed -n 's/.*"\(.*\)".*/\1/p' | tr 'A-Z' 'a-z' | sed 's/kernelworkerstatus\.//' | tail -1
+}
+
+run_count() {  # completed runs recorded in a state file, 0 if absent
+  [ -f "$1" ] && python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["runs"]))' "$1" || echo 0
+}
+
+open_editor() {
+  echo "Start the next run in the browser: reload the editor, check Add-ons -> Secrets has"
+  echo "COURTLISTENER_API_TOKEN checked, if the Input panel offers a newer version of"
+  echo "courtpipe-mtd-state take it, then Save Version -> Save & Run All (Commit)."
+  open "https://www.kaggle.com/code/$KERNEL/edit" 2>/dev/null || true
 }
 
 extract_lines() {  # dockets in a gzipped extract, 0 if absent
@@ -73,7 +91,8 @@ push_kernel() {
   grep -q "COURTPIPE_REF = \"$sha\"" "$tmp/run.py" || { echo "could not pin COURTPIPE_REF" >&2; exit 1; }
   "$KAGGLE" kernels push -p "$tmp"
   rm -rf "$tmp"
-  echo "started $KERNEL at courtpipe ${sha:0:7}; it runs about 12 hours. Check with: scripts/kaggle-mtd.sh status"
+  echo "pushed $KERNEL code at courtpipe ${sha:0:7}. This run will fail on the secret; that is expected."
+  echo "Reload the editor before saving a version from it."
 }
 
 case "${1:-}" in
@@ -93,7 +112,7 @@ EOF
     status="$(kernel_status)"
     case "$status" in
       running|queued) echo "a run is still going ($status); wait for it to finish" >&2; exit 1 ;;
-      none) echo "first run: starting from the empty state" ;;
+      none) echo "no notebook yet: run scripts/kaggle-mtd.sh push first" >&2; exit 1 ;;
       *)
         echo "last run: $status"
         dir="$(pull)"
@@ -106,6 +125,12 @@ EOF
           if [ "$got" -lt "$have" ]; then
             echo "the last run's extract has $got dockets but the saved state has $have; not overwriting. See $dir" >&2; exit 1
           fi
+          runs_have="$(run_count "$DATA/state/mtd_fetch_state.json")"
+          runs_got="$(run_count "$new/mtd_fetch_state.json")"
+          if [ "$runs_got" -le "$runs_have" ]; then
+            echo "the last run started from an older state ($runs_got runs recorded, saved state has $runs_have)," >&2
+            echo "probably a stale dataset version in the editor. Not overwriting. See $dir" >&2; exit 1
+          fi
           cp "$new/mtd_fetch_state.json" "$new/mtd_extract.jsonl.gz" "$new/cache.tar.gz" "$DATA/state/"
           rm -f "$DATA/state/README.txt"
           echo "saving state: $have -> $got dockets"
@@ -117,6 +142,12 @@ EOF
         backup
         ;;
     esac
+    open_editor
+    ;;
+
+  push)
+    status="$(kernel_status)"
+    case "$status" in running|queued) echo "a run is going ($status); pushing would replace it" >&2; exit 1 ;; esac
     push_kernel
     ;;
 
