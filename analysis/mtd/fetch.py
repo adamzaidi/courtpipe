@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from pathlib import Path
 from typing import Any, Optional
 
@@ -62,6 +63,11 @@ LARGE_SHARE = 0.5
 # docket is skipped. A 404/410 is skipped at once.
 MAX_TRANSIENT_ATTEMPTS = 3
 
+# Characters of each filing's plain_text kept in the extract. None keeps the full text.
+# The default matches every extract built before 2026-11-20; the Kaggle runner passes
+# None (see the SPEC amendment of that date).
+DEFAULT_TEXT_CHARS: Optional[int] = 8000
+
 SMOKE_DOCKET_ID = 70649963  # public search hit cited in the spec; no document body committed
 
 
@@ -88,7 +94,7 @@ def _party_row(raw: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _entry_row(raw: dict[str, Any]) -> dict[str, Any]:
+def _entry_row(raw: dict[str, Any], text_chars: Optional[int] = DEFAULT_TEXT_CHARS) -> dict[str, Any]:
     recap = raw.get("recap_documents") or []
     first = recap[0] if recap else {}
     attachments = []
@@ -103,7 +109,7 @@ def _entry_row(raw: dict[str, Any]) -> dict[str, Any]:
         "short_description": first.get("short_description") or raw.get("description") or "",
         "is_available": first.get("is_available"),
         "page_count": first.get("page_count"),
-        "plain_text": (first.get("plain_text") or "")[:8000],
+        "plain_text": (first.get("plain_text") or "")[:text_chars],
         "attachments": attachments,
     }
 
@@ -117,7 +123,11 @@ def _docket_id_from_hit(hit: dict[str, Any]) -> Optional[int]:
 
 
 def _docket_row(
-    client: CourtListenerClient, docket_id: int, hit: dict[str, Any], large: bool = False
+    client: CourtListenerClient,
+    docket_id: int,
+    hit: dict[str, Any],
+    large: bool = False,
+    text_chars: Optional[int] = DEFAULT_TEXT_CHARS,
 ) -> Optional[dict[str, Any]]:
     """Fetch one docket. Returns None when the docket is out of NOS scope."""
     docket = client.docket(docket_id)
@@ -140,7 +150,7 @@ def _docket_row(
         "dateFiled": docket.get("date_filed") or hit.get("dateFiled"),
         "parties_have_party_type": True,
         "parties": [_party_row(p) for p in parties],
-        "entries": [_entry_row(e) for e in entries],
+        "entries": [_entry_row(e, text_chars) for e in entries],
         "snapshot_date": None,
         # True when the docket needed more than one run's allowance. Used for the
         # large-docket bias check in the evaluation report.
@@ -193,7 +203,12 @@ def _next_page(client: CourtListenerClient, query: str, qstate: dict[str, Any], 
 
 
 def _try_docket(
-    client: CourtListenerClient, docket_id: int, hit: dict[str, Any], cap: Optional[int], large: bool
+    client: CourtListenerClient,
+    docket_id: int,
+    hit: dict[str, Any],
+    cap: Optional[int],
+    large: bool,
+    text_chars: Optional[int] = DEFAULT_TEXT_CHARS,
 ) -> tuple[str, Optional[dict[str, Any]], str]:
     """Fetch one docket under a per-docket request cap.
 
@@ -203,7 +218,7 @@ def _try_docket(
     client.docket_cap = None if cap is None else client.requests_made + cap
     client.track_cache()
     try:
-        row = _docket_row(client, docket_id, hit, large=large)
+        row = _docket_row(client, docket_id, hit, large=large, text_chars=text_chars)
         return ("out_of_scope", None, "") if row is None else ("done", row, "")
     except DocketCapReached:
         return "capped", None, ""
@@ -230,6 +245,8 @@ def fetch_mtd_extract(
     max_requests: Optional[int] = None,
     state_path: Optional[Path] = None,
     page_size: int = 20,
+    max_minutes: Optional[float] = None,
+    text_chars: Optional[int] = DEFAULT_TEXT_CHARS,
 ) -> Path:
     """Add up to ``max_dockets`` completed dockets to the extract. Requires a token.
 
@@ -241,7 +258,10 @@ def fetch_mtd_extract(
     rotates across CANDIDATE_QUERIES for new dockets. A new docket that needs more than
     NEW_DOCKET_ALLOWANCE requests moves to the large queue instead of being truncated,
     so long cases are delayed, never dropped. The run stops cleanly before
-    ``max_requests`` network calls or on repeated 429s.
+    ``max_requests`` network calls, on repeated 429s, or once ``max_minutes`` of wall
+    time have passed (checked between dockets, so a docket in progress finishes first;
+    hosted runners such as Kaggle kill a job at a hard limit and lose unsaved work).
+    ``text_chars`` caps each filing's stored ``plain_text``; None keeps all of it.
     """
     log = log or logger.info
     out_path = Path(out_path)
@@ -254,6 +274,11 @@ def fetch_mtd_extract(
     queued = {d for q in state["queries"].values() for d, _ in q["pending"]} | {d for d, _ in state["large"]}
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.touch()
+
+    deadline = None if max_minutes is None else time.monotonic() + float(max_minutes) * 60
+
+    def out_of_time() -> bool:
+        return deadline is not None and time.monotonic() >= deadline
 
     counts = {"added": 0, "added_large": 0, "moved_to_large": 0, "transient": 0, "cache_bytes_freed": 0}
 
@@ -300,12 +325,14 @@ def fetch_mtd_extract(
         while state["large"] and counts["added"] < max_dockets:
             if reserve_end is not None and client.requests_made >= reserve_end:
                 break
+            if out_of_time():
+                break
             docket_id, hit = state["large"][0]
             if docket_id in tried:  # every large docket already attempted this run
                 break
             tried.add(docket_id)
             cap = None if reserve_end is None else reserve_end - client.requests_made
-            status, row, detail = _try_docket(client, docket_id, hit, cap, large=True)
+            status, row, detail = _try_docket(client, docket_id, hit, cap, large=True, text_chars=text_chars)
             if status == "capped":
                 client.stop_tracking_cache()
                 break  # reserve used; the docket keeps its place at the front
@@ -326,6 +353,9 @@ def fetch_mtd_extract(
         # Phase 2: new dockets, rotating across the candidate searches.
         turn = 0
         while counts["added"] < max_dockets:
+            if out_of_time():
+                stop_reason = "time limit reached"
+                break
             active = [q for q in CANDIDATE_QUERIES if state["queries"][q]["pending"] or not state["queries"][q]["exhausted"]]
             if not active:
                 stop_reason = "all candidate searches exhausted"
@@ -351,7 +381,9 @@ def fetch_mtd_extract(
             docket_id, hit = qstate["pending"][0]
             # Peek, then pop only once there is an outcome: if the run ends mid-docket
             # (budget or 429), the docket keeps its place and resumes from the cache.
-            status, row, detail = _try_docket(client, docket_id, hit, NEW_DOCKET_ALLOWANCE, large=False)
+            status, row, detail = _try_docket(
+                client, docket_id, hit, NEW_DOCKET_ALLOWANCE, large=False, text_chars=text_chars
+            )
             qstate["pending"].pop(0)
             if status == "done":
                 write_row(row)

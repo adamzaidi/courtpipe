@@ -105,6 +105,12 @@ The first scheduled run spent its whole request budget paging one very large doc
 - A score is provisional while the large-docket queue is non-empty, because until it drains the cohort is tilted toward shorter cases. The fetch state and the run summary report the queue length.
 - Timeouts, connection errors and server errors are retried on later runs, up to three attempts, and are not treated as permanent skips. A 404 or 410 is a permanent skip. Repeated 429s end the run without skipping anything.
 
+### Full filing text, fetched on Kaggle (amendment, 20 November 2026, before any live extract was scored)
+
+The fetch moved from GitHub Actions to a private Kaggle notebook (`kaggle/mtd-fetch/`, driven by `scripts/kaggle-mtd.sh`), with the EDU limit of 3,000 requests an hour and 11 hours of fetching per run. The 118 dockets fetched on GitHub sat in the Actions cache, which cannot be downloaded, so the Kaggle extract starts over from an empty state.
+
+The extract now stores each filing's full `plain_text` instead of the first 8,000 characters. On a 29-docket sample, 176 of 379 filings with text were longer than 8,000 characters, and the cap dropped 80% of the text. The text features in this spec were always defined on the filing's text, not on a prefix, and the labeler reads the order's text, so the cap was a storage limit, not a design choice. No cohort rule, label rule, feature or bar changes. Every row of the new extract is fetched the same way, so no extract mixes capped and full text. The leakage rules are unchanged: the order's text is still read only by the labeler and never by the feature builder.
+
 ## How the order is mapped to the motion
 
 CM/ECF descriptions can name the document number they resolve. The parser looks for those patterns and is tested against them. The patterns are hypotheses, not a claim that they cover the archive:

@@ -74,6 +74,18 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Resume file for search cursors and queued dockets (default: next to --cache)",
     )
+    sp_mtd_fetch.add_argument(
+        "--max-minutes",
+        type=float,
+        default=None,
+        help="Stop cleanly between dockets after this many minutes (for hosted runners with a hard time limit)",
+    )
+    sp_mtd_fetch.add_argument(
+        "--text-chars",
+        type=int,
+        default=8000,
+        help="Characters of each filing's plain_text to keep; 0 keeps the full text",
+    )
 
     sp_mtd = sub.add_parser(
         "evaluate-mtd",
@@ -232,6 +244,8 @@ def main(argv: list[str] | None = None) -> int:
                 log=logger.info,
                 max_requests=args.max_requests,
                 state_path=Path(args.state) if args.state else None,
+                max_minutes=args.max_minutes,
+                text_chars=None if int(args.text_chars) <= 0 else int(args.text_chars),
             )
         except RuntimeError as exc:
             logger.error("%s", exc)
