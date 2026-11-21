@@ -113,6 +113,12 @@ def _cache_key(url: str, params: Optional[dict]) -> str:
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
 
+# Timeouts, dropped connections and these server errors are retried inside one request
+# before the caller sees them. Each attempt counts against the request budget.
+RETRY_STATUSES = frozenset({500, 502, 503, 504})
+RETRY_DELAYS = (5.0, 20.0)  # seconds slept before the second and third attempts
+
+
 class CourtListenerClient:
     """Modest authenticated (or public search) client with on-disk cache."""
 
@@ -159,13 +165,13 @@ class CourtListenerClient:
             return json.loads(path.read_text(encoding="utf-8"))
         self._spend()
         logger.info("GET %s", url)
-        response = self.session.get(url, params=params, timeout=45)
+        response = self._get_with_retries(url, params)
         if response.status_code == 429:
             retry_after = float(response.headers.get("Retry-After") or 20)
             logger.warning("CourtListener 429; sleeping %.1fs", min(retry_after, 120))
             time.sleep(min(retry_after, 120))
             self._spend()
-            response = self.session.get(url, params=params, timeout=45)
+            response = self._get_with_retries(url, params)
             if response.status_code == 429:
                 raise RateLimited("CourtListener returned 429 twice; ending the run")
         if response.status_code == 401:
@@ -178,6 +184,25 @@ class CourtListenerClient:
         if use_cache:
             path.write_text(json.dumps(payload), encoding="utf-8")
         return payload
+
+    def _get_with_retries(self, url: str, params: Optional[dict]) -> requests.Response:
+        """One GET, retried on timeouts, connection errors and RETRY_STATUSES. The first
+        attempt's budget is spent by the caller; each retry spends its own. The last
+        attempt's exception or response is passed through unchanged."""
+        for delay in (*RETRY_DELAYS, None):
+            try:
+                response = self.session.get(url, params=params, timeout=45)
+            except (requests.Timeout, requests.ConnectionError) as exc:
+                if delay is None:
+                    raise
+                logger.warning("CourtListener %s; retrying in %.0fs", type(exc).__name__, delay)
+            else:
+                if response.status_code not in RETRY_STATUSES or delay is None:
+                    return response
+                logger.warning("CourtListener HTTP %s; retrying in %.0fs", response.status_code, delay)
+            time.sleep(delay)
+            self._spend()
+        raise AssertionError("unreachable")
 
     def track_cache(self) -> None:
         """Start recording which cache files the following requests touch."""

@@ -16,8 +16,9 @@
 # Runs are started from the browser (Save Version -> Save & Run All), not with
 # `kaggle kernels push`: Kaggle gives secrets only to versions saved in the editor
 # (confirmed 2026-11-20; pushed versions fail with HTTP 400 from UserSecretsClient).
-# `push` still uploads code changes, pinned to this repo's current commit; reload the
-# editor afterwards or Save Version fails with a ConcurrencyViolation.
+# The notebook installs courtpipe from the head of its branch on GitHub at run time, so
+# fetcher changes need only a git push. `push` is for changes to kaggle/mtd-fetch itself;
+# reload the editor afterwards or Save Version fails with a ConcurrencyViolation.
 #
 # Needs KAGGLE_API_TOKEN in .env, the Kaggle CLI in $COURTPIPE_DATA/.kaggle-venv, and
 # the CourtListener token stored once as a Kaggle Secret on the notebook (label
@@ -78,20 +79,11 @@ wait_dataset_ready() {
 }
 
 push_kernel() {
-  if [ -n "$(git -C "$REPO" status --porcelain -- kaggle analysis courtpipe)" ]; then
-    echo "uncommitted changes in kaggle/, analysis/ or courtpipe/; commit and push first" >&2; exit 1
+  if [ -n "$(git -C "$REPO" status --porcelain -- kaggle)" ]; then
+    echo "uncommitted changes in kaggle/; commit first" >&2; exit 1
   fi
-  local sha; sha="$(git -C "$REPO" rev-parse HEAD)"
-  if ! git -C "$REPO" branch -r --contains "$sha" | grep -q .; then
-    echo "commit $sha is not on GitHub yet; the notebook installs courtpipe from there. git push first" >&2; exit 1
-  fi
-  local tmp; tmp="$(mktemp -d)"
-  cp "$REPO/kaggle/mtd-fetch/kernel-metadata.json" "$tmp/"
-  sed "s/^COURTPIPE_REF = \"main\"/COURTPIPE_REF = \"$sha\"/" "$REPO/kaggle/mtd-fetch/run.py" > "$tmp/run.py"
-  grep -q "COURTPIPE_REF = \"$sha\"" "$tmp/run.py" || { echo "could not pin COURTPIPE_REF" >&2; exit 1; }
-  "$KAGGLE" kernels push -p "$tmp"
-  rm -rf "$tmp"
-  echo "pushed $KERNEL code at courtpipe ${sha:0:7}. This run will fail on the secret; that is expected."
+  "$KAGGLE" kernels push -p "$REPO/kaggle/mtd-fetch"
+  echo "pushed $KERNEL code. This run will fail on the secret; that is expected."
   echo "Reload the editor before saving a version from it."
 }
 
@@ -127,7 +119,9 @@ EOF
           fi
           runs_have="$(run_count "$DATA/state/mtd_fetch_state.json")"
           runs_got="$(run_count "$new/mtd_fetch_state.json")"
-          if [ "$runs_got" -le "$runs_have" ]; then
+          # Nothing saved yet means nothing to protect (the 2026-11-20 run crashed before
+          # recording itself; runs are now always recorded).
+          if [ -f "$DATA/state/mtd_fetch_state.json" ] && [ "$runs_got" -le "$runs_have" ]; then
             echo "the last run started from an older state ($runs_got runs recorded, saved state has $runs_have)," >&2
             echo "probably a stale dataset version in the editor. Not overwriting. See $dir" >&2; exit 1
           fi

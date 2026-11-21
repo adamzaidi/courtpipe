@@ -63,6 +63,11 @@ LARGE_SHARE = 0.5
 # docket is skipped. A 404/410 is skipped at once.
 MAX_TRANSIENT_ATTEMPTS = 3
 
+# A search page that still fails after the client's retries is tried again on a later
+# turn; the query is left alone for the rest of the run after this many failures, and
+# the run ends if this many search pages fail in a row (CourtListener is unreachable).
+MAX_SEARCH_FAILURES = 3
+
 # Characters of each filing's plain_text kept in the extract. None keeps the full text.
 # The default matches every extract built before 2026-11-20; the Kaggle runner passes
 # None (see the SPEC amendment of that date).
@@ -280,7 +285,13 @@ def fetch_mtd_extract(
     def out_of_time() -> bool:
         return deadline is not None and time.monotonic() >= deadline
 
-    counts = {"added": 0, "added_large": 0, "moved_to_large": 0, "transient": 0, "cache_bytes_freed": 0}
+    counts = {
+        "added": 0, "added_large": 0, "moved_to_large": 0, "transient": 0,
+        "cache_bytes_freed": 0, "search_failures": 0,
+    }
+    search_failures: dict[str, int] = {}  # per query, this run only
+    consecutive_search_failures = 0
+    error: Optional[BaseException] = None
 
     def settle_cache(status: str) -> None:
         """A finished or skipped docket's raw pages are redundant once its outcome is
@@ -360,11 +371,29 @@ def fetch_mtd_extract(
             if not active:
                 stop_reason = "all candidate searches exhausted"
                 break
+            usable = [q for q in active if state["queries"][q]["pending"] or search_failures.get(q, 0) < MAX_SEARCH_FAILURES]
+            if not usable:
+                stop_reason = "every remaining search failed repeatedly this run"
+                break
+            active = usable
             query = active[turn % len(active)]
             turn += 1
             qstate = state["queries"][query]
             if not qstate["pending"]:
-                for hit in _next_page(client, query, qstate, page_size):
+                try:
+                    hits = _next_page(client, query, qstate, page_size)
+                except (requests.Timeout, requests.ConnectionError, requests.HTTPError, ValueError) as exc:
+                    # The cursor only advances on success, so the page is retried later.
+                    counts["search_failures"] += 1
+                    consecutive_search_failures += 1
+                    search_failures[query] = search_failures.get(query, 0) + 1
+                    log("search page failed (%s); trying another search", type(exc).__name__)
+                    if consecutive_search_failures >= MAX_SEARCH_FAILURES:
+                        stop_reason = "CourtListener search unreachable"
+                        break
+                    continue  # turn already advanced, so the next query is tried
+                consecutive_search_failures = 0
+                for hit in hits:
                     docket_id = _docket_id_from_hit(hit)
                     if docket_id is None or docket_id in have or docket_id in skipped or docket_id in queued:
                         continue
@@ -404,6 +433,9 @@ def fetch_mtd_extract(
         stop_reason = "rate limited (429)"
     except BudgetExhausted:
         stop_reason = "request budget used"
+    except Exception as exc:  # recorded below, then re-raised
+        stop_reason = f"error: {type(exc).__name__}"
+        error = exc
 
     run = {
         "requests": client.requests_made,
@@ -416,6 +448,7 @@ def fetch_mtd_extract(
         "skipped_total": len(skipped),
         "queued": len(queued),
         "cache_mb_freed": round(counts["cache_bytes_freed"] / 1_048_576, 1),
+        "search_failures": counts["search_failures"],
         "stop": stop_reason,
     }
     state["runs"].append(run)
@@ -426,6 +459,8 @@ def fetch_mtd_extract(
         counts["added"], counts["added_large"], len(have), counts["moved_to_large"],
         len(state["large"]), client.requests_made, run["cache_mb_freed"], stop_reason,
     )
+    if error is not None:
+        raise error
     return out_path
 
 

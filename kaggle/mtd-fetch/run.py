@@ -1,7 +1,9 @@
 """courtpipe motion-to-dismiss fetch, one Kaggle run.
 
-Pushed by scripts/kaggle-mtd.sh, which pins COURTPIPE_REF to the commit it pushed
-from. Reads the previous run's state from the private dataset
+Started from the Kaggle editor (Save Version -> Save & Run All; Kaggle gives secrets
+only to versions saved there). Installs courtpipe from the head of COURTPIPE_BRANCH on
+GitHub and records that commit in the run summary, so a fetcher fix needs only a git
+push, not a new notebook version. Reads the previous run's state from the private dataset
 zaidiadam/courtpipe-mtd-state, fetches until the time limit, scores the extract,
 and leaves the new state in /kaggle/working/state for the driver to pull.
 
@@ -19,7 +21,8 @@ import subprocess
 import sys
 import tarfile
 
-COURTPIPE_REF = "main"  # replaced with a commit SHA by scripts/kaggle-mtd.sh
+REPO_URL = "https://github.com/adamzaidi/courtpipe"
+COURTPIPE_BRANCH = "kaggle-fetch"  # switch to "main" once the branch is merged
 FETCH_MINUTES = 660  # Kaggle kills a run at 12 hours; leave an hour to score and save
 LIMITS = {"CL_MAX_PER_MINUTE": "50", "CL_MAX_PER_HOUR": "3000", "CL_MAX_PER_DAY": "1000000"}
 
@@ -88,16 +91,21 @@ def main():
     env = dict(os.environ, **LIMITS)
     env["COURTLISTENER_API_TOKEN"] = UserSecretsClient().get_secret("COURTLISTENER_API_TOKEN")
 
-    sh(sys.executable, "-m", "pip", "install", "-q", "--no-deps",
-       f"git+https://github.com/adamzaidi/courtpipe@{COURTPIPE_REF}")
+    head = subprocess.run(["git", "ls-remote", REPO_URL, f"refs/heads/{COURTPIPE_BRANCH}"],
+                          check=True, capture_output=True, text=True).stdout.split()[0]
+    sh(sys.executable, "-m", "pip", "install", "-q", "--no-deps", f"git+{REPO_URL}@{head}")
     sh(sys.executable, "-m", "pip", "install", "-q", "python-dotenv")
 
     restore()
     os.chdir(DATA)  # courtpipe writes run logs under ./runs; keep them out of the output
+    fetch_ok = False
     try:
         sh("courtpipe", "fetch-mtd", "--max-dockets", "1000000", "--text-chars", "0",
            "--max-minutes", str(FETCH_MINUTES), "--cache", str(CACHE),
            "--state", str(STATE), "--out", str(EXTRACT), env=env)
+        fetch_ok = True
+    except subprocess.CalledProcessError as exc:
+        print(f"fetch failed (exit {exc.returncode}); saving and scoring what was fetched", flush=True)
     finally:
         if STATE.exists():
             save()  # whatever was fetched is kept even if the fetch step failed
@@ -109,10 +117,13 @@ def main():
          "--report", str(results / "mtd_report.json"), "--results-md", str(results / "RESULTS.md")],
         env=env,
     )
-    last = json.loads(STATE.read_text())["runs"][-1]
-    last["scored"] = scored.returncode == 0
+    runs = json.loads(STATE.read_text())["runs"] if STATE.exists() else []
+    last = dict(runs[-1]) if runs else {}
+    last.update(courtpipe_commit=head, fetch_ok=fetch_ok, scored=scored.returncode == 0)
     (results / "run_summary.json").write_text(json.dumps(last, indent=1))
     print(json.dumps(last, indent=1))
+    if not fetch_ok:
+        sys.exit("the fetch step failed; state and results were saved, see the log above")
 
 
 if __name__ == "__main__":
