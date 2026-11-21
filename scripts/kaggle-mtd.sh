@@ -1,28 +1,23 @@
 #!/usr/bin/env bash
-# Run the motion-to-dismiss fetch on Kaggle instead of this Mac.
+# The motion-to-dismiss fetch runs on Kaggle by itself (since 2026-11-21). This script
+# is optional: it is for setup, code pushes, and local copies.
 #
 #   scripts/kaggle-mtd.sh setup    # once: create the private state dataset
-#   scripts/kaggle-mtd.sh start    # save the last run's output as the new state, then open the
-#                                  # editor so you click Save Version to start the next run
-#   scripts/kaggle-mtd.sh push     # upload new notebook code (only after kaggle/ or courtpipe changes)
 #   scripts/kaggle-mtd.sh status   # is a run going, and what did the last one do
-#   scripts/kaggle-mtd.sh pull     # download the last run's output without starting another
+#   scripts/kaggle-mtd.sh pull     # download the current state and the last run's results
+#   scripts/kaggle-mtd.sh ingest   # one-time: save an old-style run's output as the next dataset version
+#   scripts/kaggle-mtd.sh push     # upload changes to kaggle/mtd-fetch/ (not needed for
+#                                  # courtpipe code: the notebook installs the branch head)
 #
-# Each Kaggle run fetches for 11 hours (about 33,000 requests at 3,000/hour), scores the
-# extract, and leaves its state in its output. `start` downloads that output to
-# $COURTPIPE_DATA (default ~/courtpipe-data, off iCloud) and uploads it as a new version of
-# the private dataset zaidiadam/courtpipe-mtd-state.
-#
-# Runs are started from the browser (Save Version -> Save & Run All), not with
-# `kaggle kernels push`: Kaggle gives secrets only to versions saved in the editor
-# (confirmed 2026-11-20; pushed versions fail with HTTP 400 from UserSecretsClient).
-# The notebook installs courtpipe from the head of its branch on GitHub at run time, so
-# fetcher changes need only a git push. `push` is for changes to kaggle/mtd-fetch itself;
-# reload the editor afterwards or Save Version fails with a ConcurrencyViolation.
-#
-# Needs KAGGLE_API_TOKEN in .env, the Kaggle CLI in $COURTPIPE_DATA/.kaggle-venv, and
-# the CourtListener token stored once as a Kaggle Secret on the notebook (label
-# COURTLISTENER_API_TOKEN). Everything on Kaggle is case-level data and stays private.
+# How it runs: Kaggle's scheduler starts the private notebook zaidiadam/courtpipe-mtd-fetch.
+# Each run downloads the latest version of the private dataset zaidiadam/courtpipe-mtd-state,
+# fetches for 11 hours at 3,000 requests/hour, scores the extract, and uploads its state as
+# the next dataset version, refusing if another run saved first. Once every search and
+# queue is empty, runs only re-score. Secrets on the notebook: COURTLISTENER_API_TOKEN and
+# KAGGLE_API_TOKEN. Kaggle gives secrets only to browser-saved and scheduled versions, so a
+# version pushed with `push` fails on the secret; reload the editor and Save Version after
+# a push. Everything on Kaggle is case-level data and stays private. Local copies go to
+# $COURTPIPE_DATA (default ~/courtpipe-data), with a backup to AZ when it is mounted.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
@@ -42,19 +37,16 @@ kernel_status() {  # prints running / queued / complete / error / cancel... / no
   echo "$out" | sed -n 's/.*"\(.*\)".*/\1/p' | tr 'A-Z' 'a-z' | sed 's/kernelworkerstatus\.//' | tail -1
 }
 
-run_count() {  # completed runs recorded in a state file, 0 if absent
+run_count() {  # runs recorded in a state file, 0 if absent
   [ -f "$1" ] && python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["runs"]))' "$1" || echo 0
 }
 
-open_editor() {
-  echo "Start the next run in the browser: reload the editor, check Add-ons -> Secrets has"
-  echo "COURTLISTENER_API_TOKEN checked, if the Input panel offers a newer version of"
-  echo "courtpipe-mtd-state take it, then Save Version -> Save & Run All (Commit)."
-  open "https://www.kaggle.com/code/$KERNEL/edit" 2>/dev/null || true
-}
-
-extract_lines() {  # dockets in a gzipped extract, 0 if absent
-  [ -f "$1" ] && gzip -dc "$1" | wc -l | tr -d ' ' || echo 0
+docket_count() {  # dockets in the local state copy (Kaggle may store the extract unpacked)
+  local f
+  for f in "$DATA/state/mtd_extract.jsonl" "$DATA/state/mtd_extract.jsonl.gz"; do
+    [ -f "$f" ] && { gzip -dcf "$f" | wc -l | tr -d ' '; return; }
+  done
+  echo 0
 }
 
 backup() {
@@ -101,42 +93,32 @@ EOF
     ;;
 
   start)
+    echo "Runs are scheduled on Kaggle and save their own state; nothing to start by hand."
+    echo "To run one now: open the notebook editor and Save Version -> Save & Run All."
+    echo "Use 'pull' for a local copy."
+    ;;
+
+  ingest)
+    # One-time bridge (2026-11-21): runs started before the self-saving notebook leave
+    # their state only in the notebook output. Save that output as the next dataset
+    # version, if it extends the dataset's current state.
     status="$(kernel_status)"
-    case "$status" in
-      running|queued) echo "a run is still going ($status); wait for it to finish" >&2; exit 1 ;;
-      none) echo "no notebook yet: run scripts/kaggle-mtd.sh push first" >&2; exit 1 ;;
-      *)
-        echo "last run: $status"
-        dir="$(pull)"
-        new="$dir/state"
-        if [ ! -f "$new/mtd_fetch_state.json" ] || [ ! -f "$new/mtd_extract.jsonl.gz" ]; then
-          echo "the last run left no state (see $dir); the dataset keeps the previous state" >&2
-        else
-          have="$(extract_lines "$DATA/state/mtd_extract.jsonl.gz")"
-          got="$(extract_lines "$new/mtd_extract.jsonl.gz")"
-          if [ "$got" -lt "$have" ]; then
-            echo "the last run's extract has $got dockets but the saved state has $have; not overwriting. See $dir" >&2; exit 1
-          fi
-          runs_have="$(run_count "$DATA/state/mtd_fetch_state.json")"
-          runs_got="$(run_count "$new/mtd_fetch_state.json")"
-          # Nothing saved yet means nothing to protect (the 2026-11-20 run crashed before
-          # recording itself; runs are now always recorded).
-          if [ -f "$DATA/state/mtd_fetch_state.json" ] && [ "$runs_got" -le "$runs_have" ]; then
-            echo "the last run started from an older state ($runs_got runs recorded, saved state has $runs_have)," >&2
-            echo "probably a stale dataset version in the editor. Not overwriting. See $dir" >&2; exit 1
-          fi
-          cp "$new/mtd_fetch_state.json" "$new/mtd_extract.jsonl.gz" "$new/cache.tar.gz" "$DATA/state/"
-          rm -f "$DATA/state/README.txt"
-          echo "saving state: $have -> $got dockets"
-          "$KAGGLE" datasets version -p "$DATA/state" -m "after run of $(date +%Y-%m-%d)" -r tar >/dev/null
-          sleep 15
-          wait_dataset_ready
-        fi
-        [ -f "$dir/results/run_summary.json" ] && cat "$dir/results/run_summary.json"
-        backup
-        ;;
-    esac
-    open_editor
+    case "$status" in running|queued) echo "a run is still going ($status)" >&2; exit 1 ;; esac
+    dir="$(pull)"; new="$dir/state"
+    [ -f "$new/mtd_fetch_state.json" ] || { echo "the last run left no state in its output ($dir)" >&2; exit 1; }
+    cur="$(mktemp -d)"
+    "$KAGGLE" datasets download "$DATASET" -f mtd_fetch_state.json -p "$cur" -o >/dev/null
+    for z in "$cur"/*.zip; do [ -f "$z" ] && unzip -oq "$z" -d "$cur"; done
+    have="$(run_count "$cur/mtd_fetch_state.json")"; got="$(run_count "$new/mtd_fetch_state.json")"
+    rm -rf "$cur"
+    if [ "$got" -le "$have" ]; then
+      echo "the last run's state ($got runs) does not extend the dataset's ($have runs); nothing to do" >&2; exit 1
+    fi
+    printf '{"title": "courtpipe mtd state", "id": "%s", "licenses": [{"name": "unknown"}]}\n' "$DATASET" > "$new/dataset-metadata.json"
+    "$KAGGLE" datasets version -p "$new" -m "ingest of run output $(date +%Y-%m-%d)" >/dev/null 2>&1
+    wait_dataset_ready
+    echo "saved the last run's state as the next dataset version ($have -> $got runs)"
+    backup
     ;;
 
   push)
@@ -147,15 +129,20 @@ EOF
 
   status)
     echo "notebook: $(kernel_status)"
-    if [ -f "$DATA/state/mtd_extract.jsonl.gz" ]; then
-      echo "saved state: $(extract_lines "$DATA/state/mtd_extract.jsonl.gz") dockets"
-    fi
+    "$KAGGLE" datasets status "$DATASET" >/dev/null 2>&1 && echo "dataset $DATASET: $("$KAGGLE" datasets status "$DATASET")"
+    echo "local copy: $(docket_count) dockets (refresh with pull)"
     last="$(ls -d "$DATA"/runs/*/ 2>/dev/null | tail -1)"
     [ -n "$last" ] && [ -f "$last/results/run_summary.json" ] && { echo "last pulled run ($last):"; cat "$last/results/run_summary.json"; }
     ;;
 
   pull)
-    dir="$(pull)"; echo "downloaded to $dir"; ls "$dir"; backup
+    # The dataset is the source of truth; the notebook output only holds the last run.
+    mkdir -p "$DATA/state"
+    "$KAGGLE" datasets download "$DATASET" -p "$DATA/state" --unzip -o >/dev/null
+    dir="$(pull)"
+    echo "state: $(ls "$DATA/state" | wc -l | tr -d ' ') files in $DATA/state; last run's output in $dir"
+    [ -f "$dir/results/run_summary.json" ] && cat "$dir/results/run_summary.json"
+    backup
     ;;
 
   *)
