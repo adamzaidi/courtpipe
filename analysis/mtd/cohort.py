@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import date
 from pathlib import Path
 from typing import Any, Iterable
@@ -42,6 +43,8 @@ QUARANTINE_START = date(2023, 1, 1)
 QUARANTINE_END = date(2023, 12, 31)
 MOTION_WINDOW_START = date(2016, 1, 1)
 MOTION_WINDOW_END = date(2023, 12, 31)
+# Diagnostic only, not a filter: entries counted as motions whose text opens like a brief.
+BRIEF_LEAD = re.compile(r"\s*(response|reply|memorandum|opposition|brief)\b", re.I)
 
 
 def load_extract(path: Path) -> list[dict[str, Any]]:
@@ -105,6 +108,14 @@ def build_rows(dockets: Iterable[dict[str, Any]]) -> tuple[pd.DataFrame, dict[st
         "proposed_or_rr": 0,
         "unresolved": 0,
         "missing_party_type": 0,
+        # Bookkeeping only (no rule depends on these): where the remaining motions go,
+        # so the motion-level funnel adds up.
+        "outside_window": 0,
+        "order_text_unclear": 0,
+        "first_order_rules_on_other_motion": 0,
+        "not_corporate_defendant": 0,
+        "label_unclear": 0,
+        "motion_entries_look_like_briefs": 0,
     }
     rows: list[dict[str, Any]] = []
     for docket in dockets:
@@ -125,6 +136,9 @@ def build_rows(dockets: Iterable[dict[str, Any]]) -> tuple[pd.DataFrame, dict[st
         entries = list(docket.get("entries") or [])
         motions = _motion_entries(entries)
         funnel["mtd_motion_entries"] += len(motions)
+        funnel["motion_entries_look_like_briefs"] += sum(
+            1 for m in motions if BRIEF_LEAD.match(str(m.get("description") or ""))
+        )
         orders = []
         for entry in entries:
             blob = str(entry.get("description") or "")
@@ -142,6 +156,7 @@ def build_rows(dockets: Iterable[dict[str, Any]]) -> tuple[pd.DataFrame, dict[st
         for motion in motions:
             motion_date = parse_date(motion.get("date_filed"))
             if motion_date is None or motion_date < MOTION_WINDOW_START or motion_date > MOTION_WINDOW_END:
+                funnel["outside_window"] += 1
                 continue
             later_orders = [
                 (entry, parsed)
@@ -157,6 +172,7 @@ def build_rows(dockets: Iterable[dict[str, Any]]) -> tuple[pd.DataFrame, dict[st
             order_entry, parsed = later_orders[0]
             if parsed["exclude_reason"] == "needs_text":
                 funnel["needs_text"] += 1
+                funnel["order_text_unclear"] += 1
                 continue
             pending = [
                 m
@@ -173,6 +189,7 @@ def build_rows(dockets: Iterable[dict[str, Any]]) -> tuple[pd.DataFrame, dict[st
                 funnel["link_ambiguous"] += 1
                 continue
             if linked.get("id") != motion.get("id") and str(linked.get("document_number")) != str(motion.get("document_number")):
+                funnel["first_order_rules_on_other_motion"] += 1
                 continue
             funnel["linked_to_order"] += 1
             filed_by = parsed.get("filed_by") or ""
@@ -199,9 +216,11 @@ def build_rows(dockets: Iterable[dict[str, Any]]) -> tuple[pd.DataFrame, dict[st
                     funnel["movant_unknown"] += 1
                     continue
             if classify_name(movant.get("name")) != "corporate":
+                funnel["not_corporate_defendant"] += 1
                 continue
             try:
                 if not is_defendant_role(movant):
+                    funnel["not_corporate_defendant"] += 1
                     continue
             except MissingPartyTypeError:
                 funnel["missing_party_type"] += 1
@@ -210,6 +229,7 @@ def build_rows(dockets: Iterable[dict[str, Any]]) -> tuple[pd.DataFrame, dict[st
             label = parsed["label"]
             if label not in {"granted", "granted_in_part", "denied"}:
                 funnel["needs_text"] += 1
+                funnel["label_unclear"] += 1
                 continue
             features = build_feature_row(docket, motion, order_entry, include_text=True)
             assert_no_leakage(features, order_entry)

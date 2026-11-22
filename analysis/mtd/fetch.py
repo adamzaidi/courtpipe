@@ -6,6 +6,7 @@ import json
 import logging
 import re
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -280,6 +281,7 @@ def fetch_mtd_extract(
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.touch()
 
+    run_started = time.monotonic()
     deadline = None if max_minutes is None else time.monotonic() + float(max_minutes) * 60
 
     def out_of_time() -> bool:
@@ -438,6 +440,8 @@ def fetch_mtd_extract(
         error = exc
 
     run = {
+        "finished": datetime.now(timezone.utc).isoformat(timespec="minutes"),
+        "minutes": round((time.monotonic() - run_started) / 60, 1),
         "requests": client.requests_made,
         "new_dockets": counts["added"],
         "completed_large": counts["added_large"],

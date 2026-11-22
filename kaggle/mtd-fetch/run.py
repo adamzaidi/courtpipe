@@ -7,7 +7,7 @@ scheduled versions, not to `kaggle kernels push`). Each run:
 2. downloads the latest version of the private dataset zaidiadam/courtpipe-mtd-state
    with the Kaggle API (the attached input can be a stale version on scheduled runs);
 3. fetches for up to FETCH_MINUTES, or skips fetching once the cohort is complete;
-4. scores the extract and writes aggregate results and a progress line;
+4. scores the extract and writes aggregate results and the progress page (counts only);
 5. checks that nobody saved a newer state meanwhile, then uploads the new state as the
    next dataset version.
 
@@ -186,6 +186,9 @@ def main():
     report = results / "mtd_report.json"
     if report.exists():
         last["funnel"] = json.loads(report.read_text()).get("funnel")
+    if STATE.exists():
+        subprocess.run(["courtpipe", "mtd-progress", "--state", str(STATE), "--report", str(report),
+                        "--out", str(results / "PROGRESS.md")], env=env)
     (results / "run_summary.json").write_text(json.dumps(last, indent=1))
     print(json.dumps(last, indent=1))
 

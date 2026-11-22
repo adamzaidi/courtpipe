@@ -97,6 +97,14 @@ def _build_parser() -> argparse.ArgumentParser:
     sp_mtd.add_argument("--results-md", default="")
     sp_mtd.add_argument("--bootstrap", type=int, default=1000)
 
+    sp_prog = sub.add_parser(
+        "mtd-progress",
+        help="Write the aggregate progress page for the MTD data collection (counts only)",
+    )
+    sp_prog.add_argument("--state", required=True, help="mtd_fetch_state.json")
+    sp_prog.add_argument("--report", default="", help="mtd_report.json from evaluate-mtd")
+    sp_prog.add_argument("--out", default="docs/mtd/PROGRESS.md")
+
     sp_mtd_smoke = sub.add_parser(
         "smoke-mtd",
         help="One authenticated docket-entry read (needs a token; does not train)",
@@ -273,6 +281,13 @@ def main(argv: list[str] | None = None) -> int:
             logger.info("Wrote %s", args.results_md)
         gate = "pass" if report["modeling_gate"]["passed"] else "fail"
         logger.info("audit_gate=%s modeling_gate=%s", report["audit_gate"], gate)
+        return 0
+
+    if args.cmd == "mtd-progress":
+        from analysis.mtd.progress import write_progress
+
+        path = write_progress(Path(args.state), Path(args.report) if args.report else None, Path(args.out))
+        logger.info("Wrote %s", path)
         return 0
 
     if args.cmd == "smoke-mtd":

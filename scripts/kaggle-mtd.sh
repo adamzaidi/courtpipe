@@ -4,7 +4,8 @@
 #
 #   scripts/kaggle-mtd.sh setup    # once: create the private state dataset
 #   scripts/kaggle-mtd.sh status   # is a run going, and what did the last one do
-#   scripts/kaggle-mtd.sh pull     # download the current state and the last run's results
+#   scripts/kaggle-mtd.sh pull     # download the current state and the last run's results,
+#                                  # and refresh docs/mtd/PROGRESS.md
 #   scripts/kaggle-mtd.sh ingest   # one-time: save an old-style run's output as the next dataset version
 #   scripts/kaggle-mtd.sh push     # upload changes to kaggle/mtd-fetch/ (not needed for
 #                                  # courtpipe code: the notebook installs the branch head)
@@ -142,6 +143,10 @@ EOF
     dir="$(pull)"
     echo "state: $(ls "$DATA/state" | wc -l | tr -d ' ') files in $DATA/state; last run's output in $dir"
     [ -f "$dir/results/run_summary.json" ] && cat "$dir/results/run_summary.json"
+    if [ -f "$dir/results/PROGRESS.md" ]; then
+      cp "$dir/results/PROGRESS.md" "$REPO/docs/mtd/PROGRESS.md"
+      echo "updated docs/mtd/PROGRESS.md (counts only); commit it to publish"
+    fi
     backup
     ;;
 
