@@ -10,11 +10,11 @@ The study asks whether a motion to dismiss filed by a corporate defendant in fed
 
 | | |
 | --- | ---: |
-| Dockets collected | 3,461 |
-| Large dockets waiting (collected over several runs) | 417 |
-| Searches finished | 1 of 8 |
-| Collection runs | 1 |
-| API requests to date | 27,409 |
+| Dockets collected | 6,881 |
+| Large dockets waiting (collected over several runs) | 233 |
+| Searches finished | 3 of 8 |
+| Collection runs | 2 |
+| API requests to date | 55,786 |
 | Collection complete | no |
 
 ## Runs
@@ -22,6 +22,7 @@ The study asks whether a motion to dismiss filed by a corporate defendant in fed
 | # | Finished (UTC) | Hours | Requests | New dockets | Total dockets | Transient failures | Stopped because |
 | ---: | --- | ---: | ---: | ---: | ---: | ---: | --- |
 | 1 | - | - | 27,409 | 2,844 | 3,461 | 0 | time limit reached |
+| 2 | - | - | 28,377 | 3,420 | 6,881 | 0 | time limit reached |
 
 617 dockets were collected before run 1's record was kept (a run that crashed before saving its run record).
 
@@ -29,32 +30,32 @@ Runs before 22 November 2026 did not record their finish time or length.
 
 ## From dockets to a labeled cohort
 
-Across 3,461 dockets in scope, the pipeline found 26,113 docket entries that read as motions to dismiss. Each is matched to the order that ruled on it, then labeled. Where each one ends up:
+Across 6,881 dockets in scope, the pipeline found 45,169 docket entries that read as motions to dismiss. Each is matched to the order that ruled on it, then labeled. Where each one ends up:
 
 | Step | Motions | Share | Note |
 | --- | ---: | ---: | --- |
-| Filed outside the 2016-2023 study window | 5,470 | 21% | by design |
-| No order on the docket after the motion yet | 3,811 | 15% | by design |
-| First later order's docket text does not say granted or denied | 8,112 | 31% | fixable: read the order's PDF text |
-| Order cannot be tied to one motion (no or several document numbers) | 6,516 | 25% | fixable: drop briefs counted as motions |
-| First later order rules on a different motion | 1,587 | 6% | fixable: look past the first order |
-| **Matched to its ruling** | **617** | **2%** | |
+| Filed outside the 2016-2023 study window | 9,392 | 21% | by design |
+| No order on the docket after the motion yet | 6,701 | 15% | by design |
+| First later order's docket text does not say granted or denied | 13,778 | 31% | fixable: read the order's PDF text |
+| Order cannot be tied to one motion (no or several document numbers) | 11,307 | 25% | fixable: drop briefs counted as motions |
+| First later order rules on a different motion | 2,842 | 6% | fixable: look past the first order |
+| **Matched to its ruling** | **1,149** | **3%** | |
 
 Of the matched motions:
 
 | Step | Motions |
 | --- | ---: |
-| Movant cannot be identified | 328 |
+| Movant cannot be identified | 598 |
 | Movant is not a corporate defendant | 0 |
 | Outcome wording unclear | 0 |
-| **Labeled cohort (granted, granted in part, denied)** | **289** |
+| **Labeled cohort (granted, granted in part, denied)** | **551** |
 
-Known issue: 7,307 of the 26,113 entries counted as motions open with "response", "reply", "memorandum", "opposition" or "brief". They are briefs about a motion, not motions, and they make orders look ambiguous. Fixes to the matching step are tracked in [ROADMAP.md](../../ROADMAP.md).
+Known issue: 12,645 of the 45,169 entries counted as motions open with "response", "reply", "memorandum", "opposition" or "brief". They are briefs about a motion, not motions, and they make orders look ambiguous. Fixes to the matching step are tracked in [ROADMAP.md](../../ROADMAP.md).
 
 ## Scoring
 
 Every run re-scores the cohort end to end. Scores stay provisional until collection is complete and the two-reader audit passes, so they are not shown here.
 
-- Labeled motions: 289 (train 141, test 114)
+- Labeled motions: 551 (train 300, test 197)
 - Audit gate: pending
 - Modeling gate: not yet met
